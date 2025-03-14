@@ -141,7 +141,7 @@ To cite HIENAA, please use the following BibTeX entry:
 ```tex
 @misc{HIENAA.jl,
   title={{HIENAA.jl}},
-  author={Seonhong Min},
+  author={Intak Hwang, Seonhong Min},
   year={2025},
   howpublished = {Online: \url{https://github.com/snu-lukemin/HIENAA.jl}},
 }

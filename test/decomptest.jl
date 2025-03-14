@@ -16,7 +16,7 @@
     a = PlainPoly(N, Qlen, isntt=false)
     uniform_random_to!(us, a.val, evalQ)
 
-    adec = HIENAA._decompose(a, decer)
+    adec = HIENAA.decompose(a, decer)
     res = PlainPoly(N, Plen + Qlen, isntt=false, isPQ=true)
 
     len, _ = size(adec)

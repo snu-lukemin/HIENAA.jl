@@ -1,29 +1,33 @@
+abstract type PlainText end
+
 """
     PlainConst is a struct for plaintext constant.
 """
-struct PlainConst
+struct PlainConst <: PlainText
     val::ModScalar
     isPQ::RefBool
     auxQ::RefInt
+    scale::RefBigFloat
 
-    function PlainConst(val::ModScalar; isPQ::Bool=false, auxQ::UInt64=UInt64(0))
-        new(val, Ref(isPQ), Ref(auxQ))
+    function PlainConst(val::ModScalar; isPQ::Bool=false, auxQ::UInt64=UInt64(0), scale::Real=1.0)
+        new(val, Ref(isPQ), Ref(auxQ), Ref(BigFloat(scale, precision=192)))
     end
 
-    function PlainConst(len::Int64; isPQ::Bool=false, auxQ::UInt64=UInt64(0))
-        new(ModScalar(len), Ref(isPQ), Ref(auxQ))
+    function PlainConst(len::Int64; isPQ::Bool=false, auxQ::UInt64=UInt64(0), scale::Real=1.0)
+        new(ModScalar(len), Ref(isPQ), Ref(auxQ), Ref(BigFloat(scale, precision=192)))
     end
 end
 
-Base.:copy(x::PlainConst) = PlainConst(copy(x.val), isPQ=x.isPQ[], auxQ=x.auxQ[])
+Base.:copy(x::PlainConst) = PlainConst(copy(x.val), isPQ=x.isPQ[], auxQ=x.auxQ[], scale=x.scale[])
 Base.:copy!(dst::PlainConst, src::PlainConst) = begin
     copy!(dst.val, src.val)
     dst.isPQ[] = src.isPQ[]
     dst.auxQ[] = src.auxQ[]
+    dst.scale[] = src.scale[]
 end
 Base.:length(x::PlainConst) = length(x.val)
-Base.:getindex(x::PlainConst, idx::AbstractRange{Int64}) = PlainConst(x.val[idx], isPQ=x.isPQ[], auxQ=x.auxQ[])
-Base.:similar(x::PlainConst) = PlainConst(similar(x.val), isPQ=x.isPQ[], auxQ=x.auxQ[])
+Base.:getindex(x::PlainConst, idx::AbstractRange{Int64}) = PlainConst(x.val[idx], isPQ=x.isPQ[], auxQ=x.auxQ[], scale=x.scale[])
+Base.:similar(x::PlainConst) = PlainConst(similar(x.val), isPQ=x.isPQ[], auxQ=x.auxQ[], scale=x.scale[])
 Base.:resize!(x::PlainConst, len::Int64) = resize!(x.val, len)
 
 initialise!(x::PlainConst; isPQ::Bool=false, auxQ::UInt64=UInt64(0)) = begin
@@ -31,34 +35,37 @@ initialise!(x::PlainConst; isPQ::Bool=false, auxQ::UInt64=UInt64(0)) = begin
 
     x.isPQ[] = isPQ
     x.auxQ[] = auxQ
+    x.scale[] = 1.0
 end
 
 """
     PlainPoly is a struct for plaintext polynomial.
 """
-struct PlainPoly
+struct PlainPoly <: PlainText
     val::ModPoly
     isPQ::RefBool
     auxQ::RefInt
+    scale::RefBigFloat
 
-    function PlainPoly(val::ModPoly; isPQ::Bool=false, auxQ::UInt64=UInt64(0))
-        new(val, Ref(isPQ), Ref(auxQ))
+    function PlainPoly(val::ModPoly; isPQ::Bool=false, auxQ::UInt64=UInt64(0), scale::Real=1.0)
+        new(val, Ref(isPQ), Ref(auxQ), Ref(BigFloat(scale, precision=192)))
     end
 
-    function PlainPoly(N::Int64, len::Int64; isntt::Bool=true, isPQ::Bool=false, auxQ::UInt64=UInt64(0))
-        new(ModPoly(N, len, isntt=isntt), Ref(isPQ), Ref(auxQ))
+    function PlainPoly(N::Int64, len::Int64; isntt::Bool=true, isPQ::Bool=false, auxQ::UInt64=UInt64(0), scale::Real=1.0)
+        new(ModPoly(N, len, isntt=isntt), Ref(isPQ), Ref(auxQ), Ref(BigFloat(scale, precision=192)))
     end
 end
 
-Base.:copy(x::PlainPoly) = PlainPoly(copy(x.val), isPQ=x.isPQ[], auxQ=x.auxQ[])
+Base.:copy(x::PlainPoly) = PlainPoly(copy(x.val), isPQ=x.isPQ[], auxQ=x.auxQ[], scale=x.scale[])
 Base.:copy!(dst::PlainPoly, src::PlainPoly) = begin
     copy!(dst.val, src.val)
     dst.isPQ[] = src.isPQ[]
     dst.auxQ[] = src.auxQ[]
+    dst.scale[] = src.scale[]
 end
 Base.:length(x::PlainPoly) = length(x.val)
-Base.:getindex(x::PlainPoly, idx::AbstractRange{Int64}) = PlainPoly(x.val[idx], isPQ=x.isPQ[], auxQ=x.auxQ[])
-Base.:similar(x::PlainPoly) = PlainPoly(similar(x.val), isPQ=x.isPQ[], auxQ=x.auxQ[])
+Base.:getindex(x::PlainPoly, idx::AbstractRange{Int64}) = PlainPoly(x.val[idx], isPQ=x.isPQ[], auxQ=x.auxQ[], scale=x.scale[])
+Base.:similar(x::PlainPoly) = PlainPoly(similar(x.val), isPQ=x.isPQ[], auxQ=x.auxQ[], scale=x.scale[])
 Base.:resize!(x::PlainPoly, len::Int64) = resize!(x.val, len)
 
 initialise!(x::PlainPoly; isntt::Bool=true, isPQ::Bool=false, auxQ::UInt64=UInt64(0)) = begin
@@ -66,9 +73,8 @@ initialise!(x::PlainPoly; isntt::Bool=true, isPQ::Bool=false, auxQ::UInt64=UInt6
 
     x.isPQ[] = isPQ
     x.auxQ[] = auxQ
+    x.scale[] = 1.0
 end
-
-const PlainText = Union{PlainConst,PlainPoly}
 
 #=================================================================================================#
 
@@ -82,7 +88,9 @@ struct RLWE
     auxQ::RefInt
 
     function RLWE(b::ModPoly, a::ModPoly; isPQ::Bool=false, auxQ::UInt64=UInt64(0))
-        @assert b.N == a.N && length(b) == length(a) && b.isntt[] == a.isntt[] "The mask and body should have the same parameters."
+        if b.N ≠ a.N || length(b) ≠ length(a) || b.isntt[] ≠ a.isntt[]
+            throw(DomainError("The mask and body should have the same parameters."))
+        end
         new(b, a, Ref(isPQ), Ref(auxQ))
     end
 
@@ -98,7 +106,9 @@ end
 
 Base.:copy(x::RLWE) = RLWE(copy(x.b), copy(x.a), isPQ=x.isPQ[], auxQ=x.auxQ[])
 Base.:copy!(dst::RLWE, src::RLWE) = begin
-    @assert length(dst.b) == length(src.b) "The length of input and output ciphertexts should match."
+    if length(dst.b) ≠ length(src.b)
+        throw(DimensionMismatch("The length of input and output ciphertexts should match."))
+    end
     copy!(dst.b, src.b)
     copy!(dst.a, src.a)
     dst.isPQ[] = src.isPQ[]
@@ -106,7 +116,9 @@ Base.:copy!(dst::RLWE, src::RLWE) = begin
 end
 
 Base.:length(x::RLWE) = begin
-    @assert length(x.a) == length(x.b) "Something is wrong with the ciphertext."
+    if length(x.a) ≠ length(x.b)
+        throw(DomainError("The mask and body should have the same length."))
+    end
     length(x.b)
 end
 
@@ -154,7 +166,9 @@ end
 Base.:axes(x::Tensor) = begin
     degree, len = length(x.vals), length(x.vals[1])
     @inbounds for i = 2:degree
-        @assert len == length(x.vals[i]) "Something is wrong with the ciphertext."
+        if len ≠ length(x.vals[i])
+            throw(DomainError("Each polynomial in the tensor should have the same length."))
+        end
     end
     (1:degree, 1:len)
 end
@@ -165,7 +179,9 @@ Base.:axes(x::Tensor, i::Int64) = begin
         1:degree
     else
         @inbounds for j = 2:degree
-            @assert len == length(x.vals[j]) "Something is wrong with the ciphertext."
+            if len ≠ length(x.vals[j])
+                throw(DomainError("Each polynomial in the tensor should have the same length."))
+            end
         end
         1:len
     end
@@ -173,7 +189,9 @@ end
 
 Base.:getindex(ct::Tensor, idx1::AbstractRange{Int64}, idx2::AbstractRange{Int64}) = begin
     M = length(idx1)
-    @assert M ≤ length(ct.vals) "The number of indices should be less than or equal to the degree of the tensor."
+    if M > length(ct.vals)
+        throw(BoundsError((idx1, idx2)))
+    end
     Tensor([ct.vals[i][idx2] for i = idx1], isPQ=ct.isPQ[], auxQ=ct.auxQ[])
 end
 
@@ -186,7 +204,9 @@ Base.:getindex(ct::Tensor, idx1::Int64) = ct.vals[idx1]
 Base.:size(ct::Tensor) = begin
     degree, len = length(ct.vals), length(ct.vals[1])
     @inbounds for i = 2:degree
-        @assert len == length(ct.vals[i]) "Something is wrong with the ciphertext."
+        if len ≠ length(ct.vals[i])
+            throw(DomainError("Each polynomial in the tensor should have the same length."))
+        end
     end
     (degree, len)
 end
@@ -202,7 +222,7 @@ Base.:copy!(dst::Tensor, src::Tensor) = begin
     dst.auxQ[] = src.auxQ[]
 end
 
-Base.:similar(x::Tensor) = Tensor([similar(vali) for vali = x.val], isPQ=x.isPQ[], auxQ=x.auxQ[])
+Base.:similar(x::Tensor) = Tensor([similar(vali) for vali = x.vals], isPQ=x.isPQ[], auxQ=x.auxQ[])
 Base.:resize!(x::Tensor, len::Int64) = begin
     @inbounds for vali = x.vals
         resize!(vali, len)
@@ -230,7 +250,9 @@ struct RLEV
 
     function RLEV(stack::Vector{RLWE})
         @inbounds for rlwe = stack
-            @assert rlwe.auxQ[] == 0 "The auxiliary modulus should be zero for RLEV encryption."
+            if rlwe.auxQ[] ≠ 0
+                throw(DomainError("The auxiliary modulus should be zero for RLEV encryption."))
+            end
         end
         new(length(stack), stack)
     end
@@ -243,7 +265,9 @@ end
 Base.:copy(x::RLEV) = RLEV(copy(x.stack))
 
 Base.:copy!(dst::RLEV, src::RLEV) = begin
-    @assert dst.glen == src.glen "The length of input and output ciphertexts should match."
+    if dst.glen ≠ src.glen
+        throw(DimensionMismatch("The length of input and output ciphertexts should match."))
+    end
     copy!(dst.stack, src.stack)
 end
 
@@ -271,7 +295,9 @@ struct RGSW
     basketa::RLEV
 
     function RGSW(basketb::RLEV, basketa::RLEV)
-        @assert basketb.glen == basketa.glen "The length of input and output ciphertexts should match."
+        if basketb.glen ≠ basketa.glen
+            throw(DimensionMismatch("The length of input and output ciphertexts should match."))
+        end
         new(basketb, basketa)
     end
 
@@ -297,5 +323,3 @@ initialise!(x::RGSW; isntt::Bool=true, isPQ::Bool=false, auxQ::UInt64=UInt64(0))
     initialise!(x.basketb, isntt=isntt, isPQ=isPQ, auxQ=auxQ)
     initialise!(x.basketa, isntt=isntt, isPQ=isPQ, auxQ=auxQ)
 end
-
-export PlainConst, PlainPoly, PlainText, RLWE, Tensor, RLEV, RGSW, initialise!

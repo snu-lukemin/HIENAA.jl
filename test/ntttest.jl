@@ -10,8 +10,8 @@
     a = uniform_random(us, ntter.N, Q)
     b = deepcopy(a)
 
-    HIENAA._ntt!(a, ntter)
-    HIENAA._intt!(a, ntter)
+    HIENAA.ntt!(a, ntter)
+    HIENAA.intt!(a, ntter)
 
     @test all(a .== b)
 end
@@ -28,8 +28,8 @@ end
     a = uniform_random(us, param.N, Q)
     b = deepcopy(a)
 
-    HIENAA._ntt!(a, ntter)
-    HIENAA._intt!(a, ntter)
+    HIENAA.ntt!(a, ntter)
+    HIENAA.intt!(a, ntter)
 
     @test all(a .== b)
 end
@@ -46,8 +46,8 @@ end
     a = uniform_random(us, ntter.N, Q)
     b = deepcopy(a)
 
-    HIENAA._ntt!(a, ntter)
-    HIENAA._intt!(a, ntter)
+    HIENAA.ntt!(a, ntter)
+    HIENAA.intt!(a, ntter)
 
     @test all(a .== b)
 end

@@ -7,7 +7,8 @@ struct RLWEParamSketch
     logQ::Int64
     dlen::Int64
 
-    RLWEParamSketch(ring_param::RingParam, logP::Int64, logQ::Int64, dlen::Int64=0) = new(ring_param, logP, logQ, dlen)
+    RLWEParamSketch(ring_param::RingParam, logP::Int64, logQ::Int64, dlen::Int64=0)::RLWEParamSketch = 
+        new(ring_param, logP, logQ, dlen)
 end
 
 """
@@ -19,62 +20,42 @@ struct RLWEParameters
     Q::Vector{UInt64}
     dlen::Int64
 
-    RLWEParameters(ring_param::RingParam, P::Union{Missing, Vector{UInt64}}, Q::Vector{UInt64}, dlen::Int64) = 
+    RLWEParameters(ring_param::RingParam, P::Union{Missing, Vector{UInt64}}, Q::Vector{UInt64}, dlen::Int64)::RLWEParameters = 
         new(ring_param, P, Q, dlen)
 
-    function RLWEParameters(sketch::RLWEParamSketch)
+    function RLWEParameters(sketch::RLWEParamSketch)::RLWEParameters
         ring_param, logP, logQ, dlen = sketch.ring_param, sketch.logP, sketch.logQ, sketch.dlen
     
         if logP == 0
             P = missing
     
             Qlen = ceil(Int64, logQ / 62)
-            Qbits = round(Int64, logQ / Qlen)
-            Q0bit = logQ - Qbits * (Qlen - 1)
-    
-            while Q0bit > 62
-                Q0bit -= Qbits
-                Qlen += 1
-            end
-    
+            Qbits = logQ / Qlen
             Qprimes = find_prime(ring_param, Qbits, Qlen)
-            Q0 = find_prime(ring_param, Q0bit)[1]
-            Q = Q0bit == Qbits ? Qprimes : vcat(Q0, Qprimes[1:end-1])
+            Q = Qprimes
     
             if dlen == 0
                 dlen = 1
             end
         else
+            maxbits = min(62, logP - 0.5log2(ring_param.m) - 2) # Minimise the key-switching error.
             Plen = ceil(Int64, logP / 62)
+            Qlen = ceil(Int64, logQ / maxbits)
+
+            Qbits = logQ / Qlen
+            Qprimes = find_prime(ring_param, Qbits, Plen + Qlen + 1)
+            
             Pbits = logP / Plen
             P = find_prime(ring_param, Pbits, Plen)
-    
-            Qlen = ceil(Int64, logQ / 62)
-            Qbits = round(Int64, logQ / Qlen)
-            Q0bit = logQ - Qbits * (Qlen - 1)
-    
-            while Q0bit > 62
-                Q0bit -= Qbits
-                Qlen += 1
-            end
-    
-            if isapprox(Pbits, Qbits, atol=0.005)
-                Qprimes = find_prime(ring_param, Qbits, Plen + Qlen)
-                Q0 = find_prime(ring_param, Q0bit)[1]
-                Q = (Q0bit == Qbits) ? Qprimes[Plen+1:end] : vcat(Q0, Qprimes[Plen+1:end-1])
-            else
-                Qprimes = find_prime(ring_param, Qbits, Qlen)
-                Q0 = find_prime(ring_param, Q0bit)[1]
-                Q = (Q0bit == Qbits) ? Qprimes : vcat(Q0, Qprimes[1:end-1])
-            end
-    
+
+            filter!(x -> x ∉ P, Qprimes)
+            Q = Qprimes[1:Qlen]
+
             if dlen == 0
-                dlen = floor(Int64, logP / max(Q0bit, Qbits))
+                dlen = floor(Int64, logP / Qbits)
             end
         end
     
         new(ring_param, P, Q, dlen)
     end
 end
-
-export RLWEParamSketch, RLWEParameters

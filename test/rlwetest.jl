@@ -18,26 +18,6 @@
     @test all(abs.(to_big(res, oper)) .< m * hw + 6σ)
 end
 
-@testset "test_divide_and_round" begin
-    m, hw, logQ, σ = 17 * 127, 16, 62 * 4, 3.2
-
-    ring_param = CyclotomicParam(m)
-    sketch = RLWEParamSketch(ring_param, 0, logQ)
-    param = RLWEParameters(sketch)
-    oper = Operator(param)
-
-    us = UniformSampler()
-    key = ternary_ringkey(us, ring_param.N, hw)
-    entor = SKEncryptor(key, σ, oper)
-
-    level = length(param.Q) - 2
-    ct = rlwe_sample(entor, level)
-    divide_and_round_to!(ct, ct, big(3)^3, oper)
-    res = phase(ct, entor)
-
-    @test all(abs.(to_big(res, oper)) .< m * hw + 6σ)
-end
-
 @testset "test_scale_P" begin
     m, hw, logP, logQ, σ = 3^4 * 5, 16, 150, 62 * 4, 3.2
 

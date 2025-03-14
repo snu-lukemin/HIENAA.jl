@@ -10,7 +10,7 @@ The following parameters stand for:
 - `ptxt_modulus`: plaintext modulus.
 - `ispacking`: whether the messages are packed or not.
 """
-struct BFVParamSketch
+struct BFVParamSketch <: HEParamSketch
     ring_param::RingParam
     logP::Int64
     logQ::Int64
@@ -19,7 +19,7 @@ struct BFVParamSketch
     ispacking::Bool
     islevelled::Bool
 
-    BFVParamSketch(ring_param::RingParam, logP::Int64, logQ::Int64, ptxt_modulus::Int64; dlen::Int64=0, ispacking::Bool=true, islevelled::Bool=true) =
+    BFVParamSketch(ring_param::RingParam, logP::Int64, logQ::Int64, ptxt_modulus::Int64; dlen::Int64=0, ispacking::Bool=true, islevelled::Bool=true)::BFVParamSketch =
         new(ring_param, logP, logQ, dlen, ptxt_modulus, ispacking, islevelled)
 end
 
@@ -29,7 +29,7 @@ end
 
 BFVParameters is a struct for the parameters for the BFV scheme.
 """
-struct BFVParameters
+struct BFVParameters <: HEParameters
     ring_param::RingParam
     P::Union{Missing,Vector{UInt64}}
     Q::Vector{UInt64}
@@ -38,63 +38,42 @@ struct BFVParameters
     ispacking::Bool
     islevelled::Bool
 
-    BFVParameters(ring_param::RingParam, P::Union{Missing,Vector{UInt64}}, Q::Vector{UInt64}, dlen::Int64, ptxt_modulus::Int64, ispacking::Bool, islevelled::Bool) =
+    BFVParameters(ring_param::RingParam, P::Union{Missing,Vector{UInt64}}, Q::Vector{UInt64}, dlen::Int64, ptxt_modulus::Int64, ispacking::Bool, islevelled::Bool)::BFVParameters =
         new(ring_param, P, Q, dlen, ptxt_modulus, ispacking, islevelled)
 
-    function BFVParameters(sketch::BFVParamSketch)
+    function BFVParameters(sketch::BFVParamSketch)::BFVParameters
         ring_param, logP, logQ, dlen, t, ispacking, islevelled = sketch.ring_param, sketch.logP, sketch.logQ, sketch.dlen, sketch.ptxt_modulus, sketch.ispacking, sketch.islevelled
 
         if logP == 0
             P = missing
-
-            Qlen = max(ceil(Int64, logQ / 62), 2)
-            Qbits = round(Int64, logQ / Qlen)
-            Q0bit = logQ - Qbits * (Qlen - 1)
-
-            while Q0bit > 62
-                Q0bit -= Qbits
-                Qlen += 1
-            end
-
-            Qprimes = find_prime(ring_param, Qbits, Qlen + 1)
-            Q0 = find_prime(ring_param, Q0bit)[1]
-            filter!(x -> x ≠ Q0, Qprimes)
-            Q = vcat(Q0, Qprimes[1:Qlen-1])
-
+    
+            Qlen = ceil(Int64, logQ / 62)
+            Qbits = logQ / Qlen
+            Qprimes = find_prime(ring_param, Qbits, Qlen)
+            Q = Qprimes
+    
             if dlen == 0
                 dlen = 1
             end
         else
-            maxbits = min(62, logP)
+            maxbits = min(62, logP) # Minimise the key-switching error.
             Plen = ceil(Int64, logP / 62)
             Qlen = ceil(Int64, logQ / maxbits)
 
-            Qbits = round(Int64, logQ / Qlen)
-            Q0bit = logQ - Qbits * (Qlen - 1)
-
-            while Q0bit > maxbits
-                Q0bit -= Qbits
-                Qlen += 1
-            end
-
+            Qbits = logQ / Qlen
             Qprimes = find_prime(ring_param, Qbits, Plen + Qlen + 1)
-            Q0 = find_prime(ring_param, Q0bit)[1]
-
+            
             Pbits = logP / Plen
-            Pprimes = find_prime(ring_param, Pbits, Plen + 1)
-            filter!(x -> x ≠ Q0, Pprimes)
-            P = Pprimes[1:Plen]
+            P = find_prime(ring_param, Pbits, Plen)
 
-            filter!(x -> x ∉ P && x ≠ Q0, Qprimes)
-            Q = vcat(Q0, Qprimes[1:Qlen-1])
+            filter!(x -> x ∉ P, Qprimes)
+            Q = Qprimes[1:Qlen]
 
             if dlen == 0
-                dlen = floor(Int64, logP / max(Q0bit, Qbits))
+                dlen = floor(Int64, logP / Qbits)
             end
         end
 
         new(ring_param, P, Q, dlen, t, ispacking, islevelled)
     end
 end
-
-export BFVParamSketch, BFVParameters

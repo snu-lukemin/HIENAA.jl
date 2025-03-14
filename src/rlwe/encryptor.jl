@@ -1,14 +1,16 @@
+abstract type Encryptor end
+
 """
 SKEncryptor is a struct for secret-key encryption.
 """
-struct SKEncryptor
+struct SKEncryptor <: Encryptor
     key::RLWEkey
     keyPQ::RLWEkeyPQ
     usampler::UniformSampler
     gsampler::CDTSampler
     oper::Operator
 
-    SKEncryptor(key::RLWEkey, σ::Real, oper::Operator) = begin
+    SKEncryptor(key::RLWEkey, σ::Real, oper::Operator)::SKEncryptor = begin
         evalP, evalQ = oper.evalP, oper.evalQ
 
         if ismissing(evalP)
@@ -25,13 +27,17 @@ struct SKEncryptor
     end
 end
 
-_getkey_at(len::Int64, entor::SKEncryptor; isPQ::Bool=false, auxQ::UInt64=UInt64(0)) = begin
+_getkey_at(len::Int64, entor::SKEncryptor; isPQ::Bool=false, auxQ::UInt64=UInt64(0))::RLWEkeyPQ = begin
     evalP, evalQ = entor.oper.evalP, entor.oper.evalQ
 
     if isPQ
-        @assert !ismissing(evalP) "The key is not defined over R_PQ."
+        if ismissing(evalP)
+            throw(DomainError("The key is not defined over R_PQ."))
+        end
         Plen, Qlen = length(evalP), length(evalQ)
-        @assert 0 < len ≤ Plen + Qlen "The length of input RLWE ciphertext does not match the parameters."
+        if len < 1 || len > Plen + Qlen
+            throw(BoundsError(len))
+        end
         if auxQ == 0
             key = entor.keyPQ[1:len]
         else
@@ -39,12 +45,14 @@ _getkey_at(len::Int64, entor::SKEncryptor; isPQ::Bool=false, auxQ::UInt64=UInt64
             key[len] = entor.oper.tensor_buff[1, 1]
             Q = Modulus(auxQ)
             @inbounds for i = 1:key.N
-                key[len][i] = _Bred(entor.key.coeffs[i], Q)
+                key[len][i] = Bred(entor.key.coeffs[i], Q)
             end
         end
     else
         Qlen = length(evalQ)
-        @assert 0 < len ≤ Qlen "The length of input RLWE ciphertext does not match the parameters."
+        if len < 1 || len > Qlen
+            throw(BoundsError(len))
+        end
         if auxQ == 0
             if ismissing(evalP)
                 key = entor.keyPQ[1:len]
@@ -58,7 +66,7 @@ _getkey_at(len::Int64, entor::SKEncryptor; isPQ::Bool=false, auxQ::UInt64=UInt64
                 key[len] = entor.oper.tensor_buff[1, 1]
                 Q = Modulus(auxQ)
                 @inbounds for i = 1:key.N
-                    key[len][i] = _Bred(entor.key.coeffs[i], Q)
+                    key[len][i] = Bred(entor.key.coeffs[i], Q)
                 end
             else
                 Plen = length(evalP)
@@ -66,7 +74,7 @@ _getkey_at(len::Int64, entor::SKEncryptor; isPQ::Bool=false, auxQ::UInt64=UInt64
                 key[len] = entor.oper.tensor_buff[1, 1]
                 Q = Modulus(auxQ)
                 @inbounds for i = 1:key.N
-                    key[len][i] = _Bred(entor.key.coeffs[i], Q)
+                    key[len][i] = Bred(entor.key.coeffs[i], Q)
                 end
             end
         end
@@ -75,10 +83,12 @@ _getkey_at(len::Int64, entor::SKEncryptor; isPQ::Bool=false, auxQ::UInt64=UInt64
     key
 end
 
-function rlwe_sample(entor::SKEncryptor, Qlen::Int64=typemax(Int64); isPQ::Bool=false, auxQ::UInt64=UInt64(0))
+function rlwe_sample(entor::SKEncryptor, Qlen::Int64=typemax(Int64); isPQ::Bool=false, auxQ::UInt64=UInt64(0))::RLWE
     oper, N = entor.oper, entor.keyPQ.N
     if isPQ
-        @assert !ismissing(oper.evalP) "The key is not defined over R_PQ."
+        if ismissing(oper.evalP)
+            throw(ErrorException("The key is not defined over R_PQ."))
+        end
         len = length(oper.evalP) + min(Qlen, length(oper.evalQ))
     else
         len = min(Qlen, length(oper.evalQ))
@@ -88,7 +98,7 @@ function rlwe_sample(entor::SKEncryptor, Qlen::Int64=typemax(Int64); isPQ::Bool=
     res
 end
 
-function rlwe_sample_to!(res::RLWE, entor::SKEncryptor)
+function rlwe_sample_to!(res::RLWE, entor::SKEncryptor)::Nothing
     us, gs = entor.usampler, entor.gsampler
     N, len, isPQ, auxQ = res.a.N, length(res.a), res.isPQ[], res.auxQ[]
 
@@ -104,46 +114,54 @@ function rlwe_sample_to!(res::RLWE, entor::SKEncryptor)
     @inbounds for j = 1:N
         ei = sample(gs)
         for i = 1:len
-            b.coeffs[i][j] = _Bred(ei, eval[i])
+            b.coeffs[i][j] = Bred(ei, eval[i])
         end
     end
 
     ntt!(b, eval)
     mulsub_to!(b, a, key, eval)
+
+    return nothing
 end
 
-public_keygen(entor::SKEncryptor) = rlwe_sample(entor, isPQ=!ismissing(entor.oper.evalP))
+public_keygen(entor::SKEncryptor)::RLWE = rlwe_sample(entor, isPQ=!ismissing(entor.oper.evalP))
 
 """
 PKEncryptor is a struct for public key encryptions.
 """
-struct PKEncryptor
+struct PKEncryptor <: Encryptor
     pk::RLWE
     gsampler::CDTSampler
     rgsampler::RGSampler
     oper::Operator
 
-    PKEncryptor(pk::RLWE, σ::Real, τ::Real, oper::Operator) = begin
+    PKEncryptor(pk::RLWE, σ::Real, τ::Real, oper::Operator)::PKEncryptor = begin
         evalP, evalQ = oper.evalP, oper.evalQ
 
         if ismissing(evalP)
             len = length(evalQ)
 
-            @assert !pk.isPQ[] && length(pk) == len "The public key length does not match the parameters."
+            if pk.isPQ[] || length(pk) ≠ len
+                throw(ErrorException("The public key length does not match the parameters."))
+            end
         else
             len = length(evalP) + length(evalQ)
 
-            @assert pk.isPQ[] && length(pk) == len "The public key length does not match the parameters."
+            if !pk.isPQ[] && length(pk) ≠ len
+                throw(ErrorException("The public key length does not match the parameters."))
+            end
         end
 
         new(pk, CDTSampler(0.0, σ), RGSampler(τ), oper)
     end
 end
 
-function rlwe_sample(entor::PKEncryptor, Qlen::Int64=typemax(Int64); isPQ::Bool=false, auxQ::UInt64=UInt64(0))
+function rlwe_sample(entor::PKEncryptor, Qlen::Int64=typemax(Int64); isPQ::Bool=false, auxQ::UInt64=UInt64(0))::RLWE
     oper, N = entor.oper, entor.oper.param.N
     if isPQ
-        @assert !ismissing(oper.evalP) "The key is not defined over R_PQ."
+        if ismissing(oper.evalP)
+            throw(ErrorException("The key is not defined over R_PQ."))
+        end
         len = length(oper.evalP) + min(Qlen, length(oper.evalQ))
     else
         len = min(Qlen, length(oper.evalQ))
@@ -153,7 +171,7 @@ function rlwe_sample(entor::PKEncryptor, Qlen::Int64=typemax(Int64); isPQ::Bool=
     res
 end
 
-function rlwe_sample_to!(res::RLWE, entor::PKEncryptor)
+function rlwe_sample_to!(res::RLWE, entor::PKEncryptor)::Nothing
     pk, gs, rgs, evalP = entor.pk, entor.gsampler, entor.rgsampler, entor.oper.evalP
     N, len, isPQ, auxQ = res.a.N, length(res.a), res.isPQ[], res.auxQ[]
 
@@ -176,7 +194,7 @@ function rlwe_sample_to!(res::RLWE, entor::PKEncryptor)
     @inbounds for j = 1:N
         rj = sample(gs)
         for i = 1:len
-            buff.coeffs[i][j] = _Bred(rj, eval[i])
+            buff.coeffs[i][j] = Bred(rj, eval[i])
         end
     end
 
@@ -188,7 +206,7 @@ function rlwe_sample_to!(res::RLWE, entor::PKEncryptor)
     @inbounds for j = 1:N
         e1j = sample(gs)
         for i = 1:len
-            buff.coeffs[i][j] = _Bred(e1j, eval[i])
+            buff.coeffs[i][j] = Bred(e1j, eval[i])
         end
     end
 
@@ -199,7 +217,7 @@ function rlwe_sample_to!(res::RLWE, entor::PKEncryptor)
     @inbounds for j = 1:N
         e0j = sample(rgs)
         for i = 1:len
-            buff.coeffs[i][j] = _Bred(e0j, eval[i])
+            buff.coeffs[i][j] = Bred(e0j, eval[i])
         end
     end
 
@@ -216,36 +234,37 @@ function rlwe_sample_to!(res::RLWE, entor::PKEncryptor)
         ss = SimpleScaler(oldQ, newQ)
         eval = geteval_at(len, entor.oper, isPQ=isPQ, auxQ=auxQ)
 
-        simple_scale!(res.b.coeffs, res.b.coeffs, ss)
+        simple_scale_to!(res.b.coeffs, res.b.coeffs, ss)
         res.b.isntt[] = false
 
-        simple_scale!(res.a.coeffs, res.a.coeffs, ss)
+        simple_scale_to!(res.a.coeffs, res.a.coeffs, ss)
         res.a.isntt[] = false
     end
+
+    return nothing
 end
 
-"""
-Encryptor is a struct for encryption and decryption of RLWE-based ciphertexts.
-"""
-Encryptor = Union{SKEncryptor,PKEncryptor}
-
-(::Type{Encryptor})(key::RLWEkey, σ::Real, oper::Operator) = SKEncryptor(key, σ, oper)
-(::Type{Encryptor})(pk::RLWE, σ::Real, τ::Real, oper::Operator) = PKEncryptor(pk, σ, τ, oper)
+(::Type{Encryptor})(key::RLWEkey, σ::Real, oper::Operator)::SKEncryptor = SKEncryptor(key, σ, oper)
+(::Type{Encryptor})(pk::RLWE, σ::Real, τ::Real, oper::Operator)::PKEncryptor = PKEncryptor(pk, σ, τ, oper)
 
 """
 rlwe_encrypt is a function to encrypt a plaintext into RLWE ciphertext.
 """
-rlwe_encrypt(m::Union{PlainConst,PlainPoly}, entor::Encryptor) = begin
+rlwe_encrypt(m::Union{PlainConst,PlainPoly}, entor::Encryptor)::RLWE = begin
     oper, N = entor.oper, entor.oper.param.N
-    m.isPQ[] && @assert !ismissing(oper.evalP) "The key is not defined over R_PQ."
+    if m.isPQ[] && ismissing(oper.evalP)
+        throw(ErrorException("The key is not defined over R_PQ."))
+    end
 
     res = RLWE(N, length(m))
     rlwe_encrypt_to!(res, m, entor)
     res
 end
 
-rlwe_encrypt_to!(res::RLWE, m::PlainConst, entor::Encryptor) = begin
-    @assert length(m) == length(res) "The length of input plaintext does not match the parameters."
+rlwe_encrypt_to!(res::RLWE, m::PlainConst, entor::Encryptor)::Nothing = begin
+    if length(m) ≠ length(res)
+        throw(DimensionMismatch("The length of input plaintext does not match the parameters."))
+    end
 
     res.isPQ[], res.auxQ[] = m.isPQ[], m.auxQ[]
     rlwe_sample_to!(res, entor)
@@ -253,11 +272,14 @@ rlwe_encrypt_to!(res::RLWE, m::PlainConst, entor::Encryptor) = begin
     buff = deepcopy(m.val)
 
     add_to!(res.b, res.b, buff, eval)
-    res
+    
+    return nothing
 end
 
-rlwe_encrypt_to!(res::RLWE, m::PlainPoly, entor::Encryptor) = begin
-    @assert length(m) == length(res) "The length of input plaintext does not match the parameters."
+rlwe_encrypt_to!(res::RLWE, m::PlainPoly, entor::Encryptor)::Nothing = begin
+    if length(m) ≠ length(res)
+        throw(DimensionMismatch("The length of input plaintext does not match the parameters."))
+    end
 
     res.isPQ[], res.auxQ[] = m.isPQ[], m.auxQ[]
     rlwe_sample_to!(res, entor)
@@ -268,13 +290,16 @@ rlwe_encrypt_to!(res::RLWE, m::PlainPoly, entor::Encryptor) = begin
     !buff.isntt[] && ntt!(buff, eval)
 
     add_to!(res.b, res.b, buff, entor.eval)
-    res
+
+    return nothing
 end
 
-rlwe_encrypt_a(m::Union{PlainConst,PlainPoly}, entor::Encryptor) = begin
+rlwe_encrypt_a(m::Union{PlainConst,PlainPoly}, entor::Encryptor)::RLWE = begin
     oper, N = entor.oper, entor.oper.param.N
     if isPQ
-        @assert !ismissing(oper.evalP) "The key is not defined over R_PQ."
+        if ismissing(oper.evalP)
+            throw(ErrorException("The key is not defined over R_PQ."))
+        end
         len = length(oper.evalP) + min(Qlen, length(oper.evalQ))
     else
         len = min(Qlen, length(oper.evalQ))
@@ -284,8 +309,10 @@ rlwe_encrypt_a(m::Union{PlainConst,PlainPoly}, entor::Encryptor) = begin
     res
 end
 
-rlwe_encrypt_a_to!(res::RLWE, m::PlainConst, entor::Encryptor) = begin
-    @assert length(m) == length(res) "The length of input plaintext does not match the parameters."
+rlwe_encrypt_a_to!(res::RLWE, m::PlainConst, entor::Encryptor)::Nothing = begin
+    if length(m) ≠ length(res)
+        throw(DimensionMismatch("The length of input plaintext does not match the parameters."))
+    end
 
     res.isPQ[], res.auxQ[] = m.isPQ[], m.auxQ[]
     rlwe_sample_to!(res, entor)
@@ -293,11 +320,14 @@ rlwe_encrypt_a_to!(res::RLWE, m::PlainConst, entor::Encryptor) = begin
     buff = deepcopy(m.val)
 
     add_to!(res.a, res.a, buff, eval)
-    res
+
+    return nothing
 end
 
-rlwe_encrypt_a_to!(res::RLWE, m::PlainPoly, entor::Encryptor) = begin
-    @assert length(m) == length(res) "The length of input plaintext does not match the parameters."
+rlwe_encrypt_a_to!(res::RLWE, m::PlainPoly, entor::Encryptor)::Nothing = begin
+    if length(m) ≠ length(res)
+        throw(DimensionMismatch("The length of input plaintext does not match the parameters."))
+    end
 
     res.isPQ[], res.auxQ[] = m.isPQ[], m.auxQ[]
     rlwe_sample_to!(res, entor)
@@ -308,17 +338,20 @@ rlwe_encrypt_a_to!(res::RLWE, m::PlainPoly, entor::Encryptor) = begin
     !buff.isntt[] && ntt!(buff, eval)
 
     add_to!(res.a, res.a, buff, entor.eval)
-    res
+
+    return nothing
 end
 
-function phase(ct::RLWE, entor::SKEncryptor)
+function phase(ct::RLWE, entor::SKEncryptor)::PlainPoly
     res = PlainPoly(similar(ct.a))
     phase_to!(res, ct, entor)
     res
 end
 
-function phase_to!(res::PlainPoly, ct::RLWE, entor::SKEncryptor)
-    @assert length(res) == length(ct) "The length of the output plaintext and input ciphertext should match."
+function phase_to!(res::PlainPoly, ct::RLWE, entor::SKEncryptor)::Nothing
+    if length(res) ≠ length(ct)
+        throw(DimensionMismatch("The length of the output plaintext and input ciphertext should match."))
+    end
     len, isPQ, auxQ = length(ct), ct.isPQ[], ct.auxQ[]
     buff = entor.oper.tensor_buff[end, 1:len]
 
@@ -335,14 +368,18 @@ function phase_to!(res::PlainPoly, ct::RLWE, entor::SKEncryptor)
 
     intt!(res.val, eval)
     res.isPQ[], res.auxQ[] = isPQ, auxQ
+
+    return nothing
 end
 
 #=====================================================================================================#
 
-rlev_encrypt(m::Union{PlainConst,PlainPoly}, entor::Encryptor) = begin
+rlev_encrypt(m::Union{PlainConst,PlainPoly}, entor::Encryptor)::RLEV = begin
     N, evalP, decer = entor.oper.param.N, entor.oper.evalP, entor.oper.decer
 
-    @assert !m.isPQ[] "The messages cannot be defined over PQ."
+    if m.isPQ[]
+        throw(DomainError("The messages cannot be defined over PQ."))
+    end
 
     mlen = length(m)
     glen = ceil(Int64, mlen / decer.dlen)
@@ -357,11 +394,15 @@ rlev_encrypt(m::Union{PlainConst,PlainPoly}, entor::Encryptor) = begin
     res
 end
 
-function rlev_encrypt_to!(res::RLEV, m::PlainConst, entor::Encryptor)
+function rlev_encrypt_to!(res::RLEV, m::PlainConst, entor::Encryptor)::Nothing
     decer = entor.oper.decer
 
-    @assert !m.isPQ[] "The messages cannot be defined over PQ."
-    @assert m.auxQ[] == 0 "RLEV encryptions cannot be encrypted with auxiliary modulus."
+    if m.isPQ[]
+        throw(DomainError("The messages cannot be defined over PQ."))
+    end
+    if m.auxQ[] ≠ 0
+        throw(DomainError("RLEV encryptions cannot be encrypted with auxiliary modulus."))
+    end
 
     mlen = length(m)
     eval = geteval_at(mlen, entor.oper)
@@ -376,7 +417,7 @@ function rlev_encrypt_to!(res::RLEV, m::PlainConst, entor::Encryptor)
 
             rlwe_sample_to!(res.stack[i], entor)
             for j = 1:mlen
-                _add_to!(res.stack[i].b[Plen+j], res.stack[i].b[Plen+j], _mul(m.val[j], decer.gvec[i][Plen+j], eval[j]), true, eval[j])
+                add_to!(res.stack[i].b[Plen+j], res.stack[i].b[Plen+j], mul(m.val[j], decer.gvec[i][Plen+j], eval[j]), true, eval[j])
             end
         end
     else
@@ -386,19 +427,24 @@ function rlev_encrypt_to!(res::RLEV, m::PlainConst, entor::Encryptor)
             res.stack[i].auxQ[] = 0
 
             rlwe_sample_to!(res.stack[i], entor)
-
             for j = 1:mlen
-                _add_to!(res.stack[i].b[j], res.stack[i].b[j], _mul(m.val[j], decer.gvec[i][j], eval[j]), true, eval[j])
+                add_to!(res.stack[i].b[j], res.stack[i].b[j], mul(m.val[j], decer.gvec[i][j], eval[j]), true, eval[j])
             end
         end
     end
+
+    return nothing
 end
 
-function rlev_encrypt_to!(res::RLEV, m::PlainPoly, entor::Encryptor)
+function rlev_encrypt_to!(res::RLEV, m::PlainPoly, entor::Encryptor)::Nothing
     decer = entor.oper.decer
 
-    @assert !m.isPQ[] "The messages cannot be defined over PQ."
-    @assert m.auxQ[] == 0 "RLEV encryptions cannot be encrypted with auxiliary modulus."
+    if m.isPQ[]
+        throw(DomainError("The messages cannot be defined over PQ."))
+    end
+    if m.auxQ[] ≠ 0
+        throw(DomainError("RLEV encryptions cannot be encrypted with auxiliary modulus."))
+    end
 
     mlen = length(m)
     eval = geteval_at(mlen, entor.oper)
@@ -416,9 +462,8 @@ function rlev_encrypt_to!(res::RLEV, m::PlainPoly, entor::Encryptor)
             res.stack[i].auxQ[] = 0
 
             rlwe_sample_to!(res.stack[i], entor)
-
             for j = 1:mlen
-                _muladd_to!(res.stack[i].b[Plen+j], decer.gvec[i][Plen+j], buff[j], eval[j])
+                muladd_to!(res.stack[i].b[Plen+j], decer.gvec[i][Plen+j], buff[j], eval[j])
             end
         end
     else
@@ -432,18 +477,21 @@ function rlev_encrypt_to!(res::RLEV, m::PlainPoly, entor::Encryptor)
             res.stack[i].auxQ[] = 0
 
             rlwe_sample_to!(res.stack[i], entor)
-
             for j = 1:mlen
-                _muladd_to!(res.stack[i].b[j], decer.gvec[i][j], buff[j], eval[j])
+                muladd_to!(res.stack[i].b[j], decer.gvec[i][j], buff[j], eval[j])
             end
         end
     end
+
+    return nothing
 end
 
-rlev_encrypt_a(m::Union{PlainConst,PlainPoly}, entor::Encryptor) = begin
+rlev_encrypt_a(m::Union{PlainConst,PlainPoly}, entor::Encryptor)::RLEV = begin
     N, evalP, decer = entor.oper.param.N, entor.oper.evalP, entor.oper.decer
 
-    @assert !m.isPQ[] "The messages cannot be defined over PQ."
+    if m.isPQ[]
+        throw(DomainError("The messages cannot be defined over PQ."))
+    end
 
     mlen = length(m)
     glen = ceil(Int64, mlen / decer.dlen)
@@ -458,11 +506,15 @@ rlev_encrypt_a(m::Union{PlainConst,PlainPoly}, entor::Encryptor) = begin
     res
 end
 
-function rlev_encrypt_a_to!(res::RLEV, m::PlainConst, entor::Encryptor)
+function rlev_encrypt_a_to!(res::RLEV, m::PlainConst, entor::Encryptor)::Nothing
     decer = entor.oper.decer
 
-    @assert !m.isPQ[] "The messages cannot be defined over PQ."
-    @assert m.auxQ[] == 0 "RLEV encryptions cannot be encrypted with auxiliary modulus."
+    if m.isPQ[]
+        throw(DomainError("The messages cannot be defined over PQ."))
+    end
+    if m.auxQ[] ≠ 0
+        throw(DomainError("RLEV encryptions cannot be encrypted with auxiliary modulus."))
+    end
 
     mlen = length(m)
     eval = geteval_at(mlen, entor.oper)
@@ -477,7 +529,7 @@ function rlev_encrypt_a_to!(res::RLEV, m::PlainConst, entor::Encryptor)
 
             rlwe_sample_to!(res.stack[i], entor)
             for j = 1:mlen
-                _add_to!(res.stack[i].a[Plen+j], res.stack[i].a[Plen+j], _mul(m.val[j], decer.gvec[i][Plen+j], eval[j]), true, eval[j])
+                add_to!(res.stack[i].a[Plen+j], res.stack[i].a[Plen+j], mul(m.val[j], decer.gvec[i][Plen+j], eval[j]), true, eval[j])
             end
         end
     else
@@ -489,17 +541,23 @@ function rlev_encrypt_a_to!(res::RLEV, m::PlainConst, entor::Encryptor)
             rlwe_sample_to!(res.stack[i], entor)
 
             for j = 1:mlen
-                _add_to!(res.stack[i].a[j], res.stack[i].a[j], _mul(m.val[j], decer.gvec[i][j], eval[j]), true, eval[j])
+                add_to!(res.stack[i].a[j], res.stack[i].a[j], mul(m.val[j], decer.gvec[i][j], eval[j]), true, eval[j])
             end
         end
     end
+
+    return nothing
 end
 
-function rlev_encrypt_a_to!(res::RLEV, m::PlainPoly, entor::Encryptor)
+function rlev_encrypt_a_to!(res::RLEV, m::PlainPoly, entor::Encryptor)::Nothing
     decer = entor.oper.decer
 
-    @assert !m.isPQ[] "The messages cannot be defined over PQ."
-    @assert m.auxQ[] == 0 "RLEV encryptions cannot be encrypted with auxiliary modulus."
+    if m.isPQ[]
+        throw(DomainError("The messages cannot be defined over PQ."))
+    end
+    if m.auxQ[] ≠ 0
+        throw(DomainError("RLEV encryptions cannot be encrypted with auxiliary modulus."))
+    end
 
     mlen = length(m)
     eval = geteval_at(mlen, entor.oper)
@@ -517,9 +575,8 @@ function rlev_encrypt_a_to!(res::RLEV, m::PlainPoly, entor::Encryptor)
             res.stack[i].auxQ[] = 0
 
             rlwe_sample_to!(res.stack[i], entor)
-
             for j = 1:mlen
-                _muladd_to!(res.stack[i].a[Plen+j], decer.gvec[i][Plen+j], buff[j], eval[j])
+                muladd_to!(res.stack[i].a[Plen+j], decer.gvec[i][Plen+j], buff[j], eval[j])
             end
         end
     else
@@ -533,30 +590,33 @@ function rlev_encrypt_a_to!(res::RLEV, m::PlainPoly, entor::Encryptor)
             res.stack[i].auxQ[] = 0
 
             rlwe_sample_to!(res.stack[i], entor)
-
             for j = 1:mlen
-                _muladd_to!(res.stack[i].a[j], decer.gvec[i][j], buff[j], eval[j])
+                muladd_to!(res.stack[i].a[j], decer.gvec[i][j], buff[j], eval[j])
             end
         end
     end
+
+    return nothing
 end
 
 #=====================================================================================================#
 
-function rgsw_encrypt(m::Union{PlainConst,PlainPoly}, entor::Encryptor)
+function rgsw_encrypt(m::Union{PlainConst,PlainPoly}, entor::Encryptor)::RGSW
     basketb = rlev_encrypt(m, entor)
     basketa = rlev_encrypt_a(m, entor)
     RGSW(basketb, basketa)
 end
 
-function rgsw_encrypt_to!(res::RGSW, m::Union{PlainConst,PlainPoly}, entor::Encryptor)
+function rgsw_encrypt_to!(res::RGSW, m::Union{PlainConst,PlainPoly}, entor::Encryptor)::Nothing
     rlev_encrypt_to!(res.basketb, m, entor)
     rlev_encrypt_a_to!(res.basketa, m, entor)
+
+    return nothing
 end
 
 #=====================================================================================================#
 
-function relin_keygen(entor::SKEncryptor)
+function relin_keygen(entor::SKEncryptor)::RLEV
     evalQ, evalP, decer = entor.oper.evalQ, entor.oper.evalP, entor.oper.decer
 
     if ismissing(evalP)
@@ -570,7 +630,6 @@ function relin_keygen(entor::SKEncryptor)
             res.stack[i].auxQ[] = 0
 
             rlwe_sample_to!(res.stack[i], entor)
-
             muladd_to!(res.stack[i].a, decer.gvec[i], entor.keyPQ, eval)
         end
     else
@@ -584,7 +643,6 @@ function relin_keygen(entor::SKEncryptor)
             res.stack[i].auxQ[] = 0
 
             rlwe_sample_to!(res.stack[i], entor)
-
             muladd_to!(res.stack[i].a, decer.gvec[i], entor.keyPQ, eval)
         end
     end
@@ -592,7 +650,7 @@ function relin_keygen(entor::SKEncryptor)
     res
 end
 
-function automorphism_keygen(idx::Int64, entor::SKEncryptor)
+function automorphism_keygen(idx::Int64, entor::SKEncryptor)::RLEV
     buff, evalQ, evalP, decer, param = entor.oper.tensor_buff.vals[2], entor.oper.evalQ, entor.oper.evalP, entor.oper.decer, entor.oper.param
 
     if ismissing(evalP)
@@ -633,6 +691,3 @@ function automorphism_keygen(idx::Int64, entor::SKEncryptor)
 
     res
 end
-
-export SKEncryptor, PKEncryptor, Encryptor, rlwe_sample, rlwe_sample_to!, rlwe_encrypt, rlwe_encrypt_to!, rlwe_encrypt_a, rlwe_encrypt_a_to!, 
-    phase, phase_to!, rlev_encrypt, rlev_encrypt_to!, rlev_encrypt_a, rlev_encrypt_a_to!, rgsw_encrypt, rgsw_encrypt_to!

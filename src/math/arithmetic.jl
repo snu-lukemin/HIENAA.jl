@@ -14,21 +14,19 @@ function ord(p::Integer, m::Integer)::Int64
     res
 end
 
-zeropadto(a::Vector{Int64}, n::Int64) = begin
-    @assert n ≥ length(a)
+zeropadto(a::Vector{Int64}, n::Int64)::Vector{Int64} = begin
+    if n < length(a)
+        throw(DomainError("The length of the input vector should be greater than or equal to the length of the output vector."))
+    end
     vcat(a, zeros(Int64, n - length(a)))
 end
 
-zeropadto(a::Vector{UInt64}, n::Int64) = begin
-    @assert n ≥ length(a)
+zeropadto(a::Vector{UInt64}, n::Int64)::Vector{UInt64} = begin
+    if n < length(a)
+        throw(DomainError("The length of the input vector should be greater than or equal to the length of the output vector."))
+    end
     vcat(a, zeros(UInt64, n - length(a)))
 end
-
-@inline ispow3(n::Int64)::Bool = n == 3^round(Int64, log(n) / log(3))
-
-@inline ispow5(n::Int64)::Bool = n == 5^round(Int64, log(n) / log(5))
-
-@inline ispow7(n::Int64)::Bool = n == 7^round(Int64, log(n) / log(7))
 
 @noinline is2a3b5c7d(n::Int64)::Bool = keys(factor(Dict, n)) ⊆ [2, 3, 5, 7]
 
@@ -68,21 +66,21 @@ end
 
 # This parameter guarantees at most -52 b of fixed point error (with 64 levels). 
 # The decryption failure will happen in a very unlikely situation...
-const fixed_prec = 124
-const float_prec = 62
-const fixed_mask = UInt64(1) << float_prec - 1
-const round_mask = UInt64(1) << (fixed_prec - float_prec) - 1
+const fixed_prec::Int64 = 124
+const float_prec::Int64 = 62
+const fixed_mask::UInt64 = UInt64(1) << float_prec - 1
+const round_mask::UInt64 = UInt64(1) << (fixed_prec - float_prec) - 1
 
-mult_and_round(a::UInt64, b::UInt128) = a * (b >> float_prec) + ((a * (b & fixed_mask)) >> float_prec)
-round_to_uint64(a::UInt128) = round_to_uint128(a) % UInt64
-round_to_uint128(a::UInt128) = (a >> (fixed_prec - float_prec) + (a & round_mask) >> (fixed_prec - float_prec - 1))
-round_to_uint128(a::Int128) = unsigned((a >> (fixed_prec - float_prec) + (a & round_mask) >> (fixed_prec - float_prec - 1)))
+mult_and_round(a::UInt64, b::UInt128)::UInt128 = a * (b >> float_prec) + ((a * (b & fixed_mask)) >> float_prec)
+round_to_uint64(a::UInt128)::UInt64 = round_to_uint128(a) % UInt64
+round_to_uint128(a::UInt128)::UInt128 = (a >> (fixed_prec - float_prec) + (a & round_mask) >> (fixed_prec - float_prec - 1))
+round_to_uint128(a::Int128)::UInt128 = unsigned((a >> (fixed_prec - float_prec) + (a & round_mask) >> (fixed_prec - float_prec - 1)))
 
 """
 scramble!(a, r) computes an in-place r-radix reversal algorithm. 
 The length of the input vector should be a power-of-r.
 """
-function scramble!(a::AbstractVector{<:Number}, r::Int64)
+function scramble!(a::AbstractVector{<:Number}, r::Int64)::Nothing
     if r == 2
         j = 0
         N = length(a)
@@ -112,30 +110,34 @@ function scramble!(a::AbstractVector{<:Number}, r::Int64)
             end
         end
     end
+
+    return nothing
 end
 
 Base.:sum(a::AbstractVector{UInt64}, Q::Modulus)::UInt64 = begin
     res = zero(UInt64)
     @inbounds for i = eachindex(a)
-        res = _add(res, a[i], Q)
+        res = add(res, a[i], Q)
     end
     res
 end
 
 Base.:powermod(a::UInt64, p::Integer, Q::Modulus)::UInt64 = begin
-    @assert p ≥ 0
+    if p < 0
+        throw(DomainError("The exponent should be non-negative."))
+    end
     p == 0 && return UInt64(1)
 
     t = prevpow(2, p)
     r = UInt64(1)
     while true
         if p >= t
-            r = _Bmul(r, a, Q)
+            r = Bmul(r, a, Q)
             p -= t
         end
         t >>>= 1
         t <= 0 && break
-        r = _Bmul(r, r, Q)
+        r = Bmul(r, r, Q)
     end
     return r
 end
@@ -143,7 +145,7 @@ end
 """
 primitive_root_finder(Q) finds the primitive root of Q.
 """
-function primitive_root_finder(Q::Modulus)
+function primitive_root_finder(Q::Modulus)::UInt64
     facts = factor(Dict, Q.Q)
     Qi = keys(facts) .^ values(facts)
 
@@ -168,7 +170,7 @@ function primitive_root_finder(Q::Modulus)
             tildei = Q.Q ÷ Qi[i]
             invtilde = invmod(tildei, Qi[i])
 
-            res = _add(res, _Bmul(_Bmul(gi[i], invtilde, Q), tildei, Q), Q)
+            res = add(res, Bmul(Bmul(gi[i], invtilde, Q), tildei, Q), Q)
         end
 
         res
@@ -177,7 +179,7 @@ end
 
 primitive_root_finder(Q::Integer)::UInt64 = primitive_root_finder(Modulus(Q))
 
-function ith_root_from_primitive_root(i::Int64, ξ::UInt64, Q::Modulus)
+function ith_root_from_primitive_root(i::Int64, ξ::UInt64, Q::Modulus)::UInt64
     facts = factor(Dict, Q.Q)
     Qiq = collect(keys(facts))
     Qir = collect(values(facts))
@@ -190,13 +192,13 @@ function ith_root_from_primitive_root(i::Int64, ξ::UInt64, Q::Modulus)
         tildei = Q.Q ÷ Qi[idx]
         invtilde = invmod(tildei, Qi[idx])
 
-        ζ = _add(ζ, _Bmul(_Bmul(ζi, invtilde, Q), tildei, Q), Q)
+        ζ = add(ζ, Bmul(Bmul(ζi, invtilde, Q), tildei, Q), Q)
     end
 
     ζ
 end
 
-function find_generators_mod_m(m::Int64)
+function find_generators_mod_m(m::Int64)::Tuple{Memory{Int64},Memory{Int64}}
     fact_dict = factor(Dict, m)
     facs = collect(fact_dict)
     sort!(facs, by=x -> x[1])
@@ -234,7 +236,9 @@ division(a, b) performs the long division of polynomials.
 This function affects the vector a, so be cautious when using.
 """
 function division(a::Vector{Int64}, b::Vector{Int64})::Vector{Int64}
-    @assert length(a) ≥ length(b)
+    if length(a) < length(b)
+        throw(DomainError("The length of the input vector should be greater than or equal to the length of the output vector."))
+    end
 
     Q = zeros(Int64, length(a) - length(b) + 1)
 
@@ -255,18 +259,22 @@ end
 division(a, b) performs the long division of polynomials.
 This function affects the vector a, so be cautious when using.
 """
-function division_mod_Q(a::Vector{UInt64}, b::Vector{UInt64}, Q::Modulus)
-    @assert length(a) ≥ length(b) "The size of the input polynomials do not match."
-    @assert gcd(b[end], Q.Q) == 1 "The leading coefficient of b should be coprime with Q."
+function division_mod_Q(a::Vector{UInt64}, b::Vector{UInt64}, Q::Modulus)::Vector{UInt64}
+    if length(a) < length(b)
+        throw(DomainError("The size of the input polynomials do not match."))
+    end
+    if gcd(b[end], Q.Q) ≠ 1
+        throw(DomainError("The leading coefficient of b should be coprime with Q."))
+    end
 
     q = zeros(UInt64, length(a) - length(b) + 1)
 
     @inbounds for i = 0:length(a)-length(b)
         if a[end-i] ≠ 0
-            q[end-i] = _Bmul(a[end-i], invmod(b[end], Q.Q), Q)
+            q[end-i] = Bmul(a[end-i], invmod(b[end], Q.Q), Q)
 
             @simd for j = 0:length(b)-1
-                a[end-i-j] = _neg(_Bred(widemul(b[end-j], q[end-i]) + Q.Q - a[end-i-j], Q), Q)
+                a[end-i-j] = neg(Bred(widemul(b[end-j], q[end-i]) + Q.Q - a[end-i-j], Q), Q)
             end
         end
     end
@@ -277,7 +285,7 @@ end
 """
 cyclotomic_finder(m) returns the m-th cyclotomic polynomial. 
 """
-function cyclotomic_finder(m::Int64)
+function cyclotomic_finder(m::Int64)::Vector{Int64}
     # Find the factors of m. Sorting is necessary to enhance the efficiency.
     factors = factor(Dict, m)
     primes = collect(keys(factors))
@@ -346,7 +354,7 @@ function cyclotomic_finder(m::Int64)
     ϕm
 end
 
-function gen_power_modmul(gen::Vector{Int64}, dims::Vector{Int64}, idx::NTuple{N,Int64}, m::Int64) where {N}
+function gen_power_modmul(gen::Vector{Int64}, dims::Vector{Int64}, idx::NTuple{N,Int64}, m::Int64)::Int64 where {N}
     if N == 1
         idx1 = powermod(gen[1], idx[1] % dims[1], m)
         res = idx1
@@ -367,5 +375,12 @@ function gen_power_modmul(gen::Vector{Int64}, dims::Vector{Int64}, idx::NTuple{N
         res = (((((idx1 * idx2) % m) * idx3) % m) * idx4) % m
     end
 
+    res
+end
+
+Base.:round(T::Type, a::BigFloat)::T = begin
+    res = round(T, a._limbs[1])
+    res += round(T, a._limbs[2])
+    res += round(T, a._limbs[3])
     res
 end

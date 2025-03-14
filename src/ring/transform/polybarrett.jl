@@ -1,4 +1,8 @@
-struct ReductorArbNTT
+abstract type Reductor end
+abstract type ReductorCyclo <: Reductor end
+abstract type ReductorArb <: Reductor end
+
+struct ReductorArbNTT <: ReductorArb
     deg::Int64
     N::Int64
     Q::Modulus
@@ -12,7 +16,7 @@ struct ReductorArbNTT
     fbuff::Vector{UInt64}
     rbuff::Vector{UInt64}
 
-    @views function ReductorArbNTT(deg::Int64, poly::Vector{Int64}, Q::Modulus)
+    @views function ReductorArbNTT(deg::Int64, poly::Vector{Int64}, Q::Modulus)::ReductorArbNTT
         N = length(poly) - 1
 
         ñ = next2a3b5c7d(N)
@@ -23,14 +27,14 @@ struct ReductorArbNTT
         ntterñ = CyclicNTTransformer2a3b5c7d(ñ, Q)
         ntterA = CyclicNTTransformer2a3b5c7d(A, Q)
 
-        poly = _Bred.(poly, Ref(Q))
+        poly = Bred.(poly, Ref(Q))
         Xdeg_over_poly = division_mod_Q(vcat(zeros(UInt64, deg), UInt64(1)), poly, Q)
 
         poly = zeropadto(poly, ñ)
         Xdeg_over_poly = zeropadto(Xdeg_over_poly, A)
 
-        _ntt!(poly, ntterñ)
-        _ntt!(Xdeg_over_poly, ntterA)
+        ntt!(poly, ntterñ)
+        ntt!(Xdeg_over_poly, ntterA)
 
         fbuff = Vector{UInt64}(undef, A)
         rbuff = Vector{UInt64}(undef, ñ)
@@ -43,7 +47,7 @@ end
 # In this implementation, Qₛₚ = (Xᵐ-1)/(X^(m/p)-1) for the smallest prime factor p.
 # In the original paper, the authors used polynomials with smaller degree than ours.
 # However, for a generalised code, we shall stick to these polynomials.
-struct ReductorCycloNTT
+struct ReductorCycloNTT <: ReductorCyclo
     p::Int64
     moverp::Int64
     iseasy::Bool
@@ -61,7 +65,7 @@ struct ReductorCycloNTT
     fbuff::Vector{UInt64}
     rbuff::Vector{UInt64}
 
-    @views function ReductorCycloNTT(m::Int64, Q::Modulus)
+    @views function ReductorCycloNTT(m::Int64, Q::Modulus)::ReductorCycloNTT
         N = totient(m)
         factors = factor(Vector, m)
         p = factors[1]
@@ -82,11 +86,11 @@ struct ReductorCycloNTT
             poly = cyclotomic_finder(m)
             Xdeg_over_poly = division(vcat(zeros(Int64, deg), 1), poly)
 
-            poly = _Bred.(zeropadto(poly, ñ), Ref(Q))
-            Xdeg_over_poly = _Bred.(zeropadto(Xdeg_over_poly, A), Ref(Q))
+            poly = Bred.(zeropadto(poly, ñ), Ref(Q))
+            Xdeg_over_poly = Bred.(zeropadto(Xdeg_over_poly, A), Ref(Q))
 
-            _ntt!(poly, ntterñ)
-            _ntt!(Xdeg_over_poly, ntterA)
+            ntt!(poly, ntterñ)
+            ntt!(Xdeg_over_poly, ntterA)
 
             fbuff = Vector{UInt64}(undef, A)
             rbuff = Vector{UInt64}(undef, ñ)
@@ -96,12 +100,10 @@ struct ReductorCycloNTT
     end
 end
 
-const ReductorNTT = Union{ReductorArbNTT,ReductorCycloNTT}
-
 """
-_barrett! computes a (mod poly).
+barrett! computes a (mod poly).
 """
-@views function _barrett!(a::AbstractVector{UInt64}, rdtor::ReductorNTT)
+@views function barrett!(a::AbstractVector{UInt64}, rdtor::Union{ReductorArbNTT,ReductorCycloNTT})
     deg, N, α, ñ, Q = rdtor.deg, rdtor.N, rdtor.α, rdtor.ñ, rdtor.Q
 
     # Compute f = ⌊a/Xᴺ⌋
@@ -111,14 +113,14 @@ _barrett! computes a (mod poly).
     @. rdtor.fbuff[α+1:end] = zero(UInt64)
 
     # Compute f = f × ⌊Xᴺ⁺ᵅ/p⌋
-    _ntt!(rdtor.fbuff, rdtor.ntterA)
-    _lazy_Bmul_to!(rdtor.fbuff, rdtor.fbuff, rdtor.Xdeg_over_poly, Q)
-    _intt!(rdtor.fbuff, rdtor.ntterA)
+    ntt!(rdtor.fbuff, rdtor.ntterA)
+    lazy_Bmul_to!(rdtor.fbuff, rdtor.fbuff, rdtor.Xdeg_over_poly, Q)
+    intt!(rdtor.fbuff, rdtor.ntterA)
 
     # Compute r = ⌊f/Xᵅ⌋ % (Xⁿ̃ - 1)
     @inbounds for i = 1:ceil(Int64, α / ñ), j = 1:ñ
         i * ñ + j > α && break
-        rdtor.fbuff[α+j] = _add(rdtor.fbuff[α+j], rdtor.fbuff[α+i*ñ+j], Q)
+        rdtor.fbuff[α+j] = add(rdtor.fbuff[α+j], rdtor.fbuff[α+i*ñ+j], Q)
         rdtor.buff[α+i*ñ+j] = 0
     end
 
@@ -129,24 +131,26 @@ _barrett! computes a (mod poly).
     @. rdtor.rbuff[idx+1:end] = zero(UInt64)
 
     # Compute r = r × p (mod Xⁿ̃ - 1)
-    _ntt!(rdtor.rbuff, rdtor.ntterñ)
-    _lazy_Bmul_to!(rdtor.rbuff, rdtor.rbuff, rdtor.poly, Q)
-    _intt!(rdtor.rbuff, rdtor.ntterñ)
+    ntt!(rdtor.rbuff, rdtor.ntterñ)
+    lazy_Bmul_to!(rdtor.rbuff, rdtor.rbuff, rdtor.poly, Q)
+    intt!(rdtor.rbuff, rdtor.ntterñ)
 
     # Compute a = a % (Xⁿ̃ - 1)
     @inbounds for i = 1:ceil(Int64, deg / ñ), j = 1:ñ
         i * ñ + j > deg && break
-        a[j] = _add(a[j], a[i*ñ+j], Q)
+        a[j] = add(a[j], a[i*ñ+j], Q)
         a[i*ñ+j] = 0
     end
 
     # Compute a -= r
     @inbounds for i = 1:N
-        a[i] = _sub(a[i], rdtor.rbuff[i], Q)
+        a[i] = sub(a[i], rdtor.rbuff[i], Q)
     end
     @inbounds @simd for i = N+1:length(a)
         a[i] = zero(UInt64)
     end
+
+    return nothing
 end
 
 #===============================================================================#
@@ -154,7 +158,7 @@ end
 """
 ReductorArbWord
 """
-struct ReductorArbWord
+struct ReductorArbWord <: ReductorArb
     deg::Int64
     N::Int64
     Q::Modulus
@@ -180,14 +184,14 @@ struct ReductorArbWord
         A = next2a3b5c7d(2α + 1)
 
         Plen = ceil(Int64, (2log2(Q.Q) + log2(max(ñ, A))) / 62)
-        P = Modulus.(collect(_find_prime_reductor(deg, N, 62, Plen)))
+        P = Modulus.(collect(Ring.find_prime_reductor(deg, N, 62, Plen)))
 
         beP2Q = BasisExtender(P, [Q])
 
         ntterñ = CyclicNTTransformer2a3b5c7d[CyclicNTTransformer2a3b5c7d(ñ, Pi) for Pi = P]
         ntterA = CyclicNTTransformer2a3b5c7d[CyclicNTTransformer2a3b5c7d(A, Pi) for Pi = P]
 
-        _poly = _Bred.(poly, Ref(Q))
+        _poly = Bred.(poly, Ref(Q))
         _Xdeg_over_poly = division_mod_Q(vcat(zeros(UInt64, N + α), UInt64(1)), _poly, Q)
 
         poly = Vector{Vector{UInt64}}(undef, Plen)
@@ -198,14 +202,14 @@ struct ReductorArbWord
             Xdeg_over_poly[i] = zeros(UInt64, A)
 
             for j = eachindex(_poly)
-                poly[i][j] = _Bred(_poly[j], P[i])
+                poly[i][j] = Bred(_poly[j], P[i])
             end
             for j = eachindex(_Xdeg_over_poly)
-                Xdeg_over_poly[i][j] = _Bred(_Xdeg_over_poly[j], P[i])
+                Xdeg_over_poly[i][j] = Bred(_Xdeg_over_poly[j], P[i])
             end
 
-            _ntt!(poly[i], ntterñ[i])
-            _ntt!(Xdeg_over_poly[i], ntterA[i])
+            ntt!(poly[i], ntterñ[i])
+            ntt!(Xdeg_over_poly[i], ntterA[i])
         end
 
         fbuff = [Vector{UInt64}(undef, A) for _ = 1:Plen]
@@ -216,7 +220,7 @@ struct ReductorArbWord
     end
 end
 
-struct ReductorCycloWord
+struct ReductorCycloWord <: ReductorCyclo
     p::Int64
     moverp::Int64
     iseasy::Bool
@@ -238,7 +242,7 @@ struct ReductorCycloWord
     rbuff::Vector{Vector{UInt64}}
     buff::Vector{Vector{UInt64}}
 
-    function ReductorCycloWord(m::Int64, Q::Modulus)
+    function ReductorCycloWord(m::Int64, Q::Modulus)::ReductorCycloWord
         N = totient(m)
         factors = factor(Vector, m)
         p = factors[1]
@@ -253,7 +257,7 @@ struct ReductorCycloWord
             A = next2a3b5c7d(2α + 1)
 
             Plen = ceil(Int64, (2log2(Q.Q) + log2(max(ñ, A))) / 62)
-            P = Modulus.(collect(_find_prime_reductor(deg, N, 62, 3)))
+            P = Modulus.(collect(Ring.find_prime_reductor(deg, N, 62, 3)))
 
             beP2Q = BasisExtender(P[1:Plen], [Q])
 
@@ -271,14 +275,14 @@ struct ReductorCycloWord
                 Xdeg_over_poly[i] = zeros(UInt64, A)
 
                 for j = eachindex(_poly)
-                    poly[i][j] = _Bred(_poly[j], P[i])
+                    poly[i][j] = Bred(_poly[j], P[i])
                 end
                 for j = eachindex(_Xdeg_over_poly)
-                    Xdeg_over_poly[i][j] = _Bred(_Xdeg_over_poly[j], P[i])
+                    Xdeg_over_poly[i][j] = Bred(_Xdeg_over_poly[j], P[i])
                 end
 
-                _ntt!(poly[i], ntterñ[i])
-                _ntt!(Xdeg_over_poly[i], ntterA[i])
+                ntt!(poly[i], ntterñ[i])
+                ntt!(Xdeg_over_poly[i], ntterA[i])
             end
 
             fbuff = [Vector{UInt64}(undef, A) for _ = 1:3]
@@ -290,7 +294,7 @@ struct ReductorCycloWord
     end
 
     # Update the modulus Q.
-    function ReductorCycloWord(rdtor::ReductorCycloWord, Q::Modulus)
+    function ReductorCycloWord(rdtor::ReductorCycloWord, Q::Modulus)::ReductorCycloWord
         p, moverp, iseasy, m, deg, N, Plen, P, α, A, ñ, beP2Q, ntterñ, ntterA, poly, Xdeg_over_poly, fbuff, rbuff, buff =
             rdtor.p, rdtor.moverp, rdtor.iseasy, rdtor.m, rdtor.deg, rdtor.N, rdtor.Plen, rdtor.P, rdtor.α, rdtor.A, rdtor.ñ, rdtor.beP2Q, rdtor.ntterñ, rdtor.ntterA, rdtor.poly, rdtor.Xdeg_over_poly, rdtor.fbuff, rdtor.rbuff, rdtor.buff
 
@@ -303,9 +307,7 @@ struct ReductorCycloWord
     end
 end
 
-const ReductorWord = Union{ReductorArbWord,ReductorCycloWord}
-
-@views function _barrett!(a::AbstractVector{UInt64}, rdtor::ReductorWord)
+@views function barrett!(a::AbstractVector{UInt64}, rdtor::Union{ReductorArbWord,ReductorCycloWord})::Nothing
     deg, N, α, ñ, Q, Plen, P, beP2Q = rdtor.deg, rdtor.N, rdtor.α, rdtor.ñ, rdtor.Q, rdtor.Plen, rdtor.P, rdtor.beP2Q
 
     # Compute f = ⌊a/Xᴺ⌋
@@ -316,16 +318,16 @@ const ReductorWord = Union{ReductorArbWord,ReductorCycloWord}
 
     # Compute f = f × ⌊Xᴺ⁺ᵅ/p⌋
     @inbounds for j = 1:Plen
-        _ntt!(rdtor.fbuff[j], rdtor.ntterA[j])
-        _lazy_Bmul_to!(rdtor.fbuff[j], rdtor.fbuff[j], rdtor.Xdeg_over_poly[j], P[j])
-        _intt!(rdtor.fbuff[j], rdtor.ntterA[j])
+        ntt!(rdtor.fbuff[j], rdtor.ntterA[j])
+        lazy_Bmul_to!(rdtor.fbuff[j], rdtor.fbuff[j], rdtor.Xdeg_over_poly[j], P[j])
+        intt!(rdtor.fbuff[j], rdtor.ntterA[j])
     end
-    basis_extend!(rdtor.buff, 1:α, rdtor.fbuff, α+1:2α, beP2Q)
+    basis_extend_to!(rdtor.buff, 1:α, rdtor.fbuff, α+1:2α, beP2Q)
 
     # Compute r = ⌊f/Xᵅ⌋ % (Xⁿ̃ - 1)
     @inbounds for i = 1:ceil(Int64, α / ñ), j = 1:ñ
         i * ñ + j > α && break
-        rdtor.buff[1][j] = _add(rdtor.buff[1][j], rdtor.buff[1][i*ñ+j], Q)
+        rdtor.buff[1][j] = add(rdtor.buff[1][j], rdtor.buff[1][i*ñ+j], Q)
         rdtor.buff[1][i*ñ+j] = 0
     end
 
@@ -338,46 +340,47 @@ const ReductorWord = Union{ReductorArbWord,ReductorCycloWord}
     # Compute r = r × p (mod Xⁿ̃ - 1)
     idx = min(deg, ñ)
     @inbounds for j = 1:Plen
-        _ntt!(rdtor.rbuff[j], rdtor.ntterñ[j])
-        _lazy_Bmul_to!(rdtor.rbuff[j], rdtor.rbuff[j], rdtor.poly[j], P[j])
-        _intt!(rdtor.rbuff[j], rdtor.ntterñ[j])
+        ntt!(rdtor.rbuff[j], rdtor.ntterñ[j])
+        lazy_Bmul_to!(rdtor.rbuff[j], rdtor.rbuff[j], rdtor.poly[j], P[j])
+        intt!(rdtor.rbuff[j], rdtor.ntterñ[j])
     end
-    basis_extend!(rdtor.buff, 1:idx, rdtor.rbuff, 1:idx, beP2Q)
+    basis_extend_to!(rdtor.buff, 1:idx, rdtor.rbuff, 1:idx, beP2Q)
 
     # Compute a = a % (Xⁿ̃ - 1)
     @inbounds for i = 1:ceil(Int64, deg / ñ), j = 1:ñ
         i * ñ + j > deg && break
-        a[j] = _add(a[j], a[i*ñ+j], Q)
+        a[j] = add(a[j], a[i*ñ+j], Q)
         a[i*ñ+j] = 0
     end
 
     # Compute a -= r
     @inbounds for i = 1:N
-        a[i] = _sub(a[i], rdtor.buff[1][i], Q)
+        a[i] = sub(a[i], rdtor.buff[1][i], Q)
     end
     @inbounds @simd for i = N+1:length(a)
         a[i] = 0
     end
+
+    return nothing
 end
 
-const ReductorCyclo = Union{ReductorCycloNTT,ReductorCycloWord}
-const ReductorArb = Union{ReductorArbNTT,ReductorArbWord}
-
 """
-_reduce! computes a (mod Φₘ).
+reduce! computes a (mod Φₘ).
 """
-function _reduce!(a::AbstractVector{UInt64}, rdtor::ReductorCyclo)
+function reduce!(a::AbstractVector{UInt64}, rdtor::ReductorCyclo)::Nothing
     p, moverp, m, Q = rdtor.p, rdtor.moverp, rdtor.m, rdtor.Q
 
     # reduction by Qₛₚ
     @inbounds for j = 1:moverp
         for i = 0:p-2
-            a[i*moverp+j] = _sub(a[i*moverp+j], a[m-moverp+j], Q)
+            a[i*moverp+j] = sub(a[i*moverp+j], a[m-moverp+j], Q)
         end
         a[m-moverp+j] = 0
     end
 
-    !rdtor.iseasy && _barrett!(a, rdtor)
+    !rdtor.iseasy && barrett!(a, rdtor)
+
+    return nothing
 end
 
-_reduce!(a::AbstractVector{UInt64}, rdtor::ReductorArb) = _barrett!(a, rdtor)
+reduce!(a::AbstractVector{UInt64}, rdtor::ReductorArb)::Nothing = barrett!(a, rdtor)

@@ -9,7 +9,7 @@
     key = ternary_ringkey(us, ring_param.N, hw)
     set_encryptor!(key, scheme)
 
-    msg = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
+    msg = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
     pt = encode(msg, scheme)
     ct = encrypt(pt, scheme)
 
@@ -17,7 +17,7 @@
     decrypt_to!(pt, ct, scheme)
     res = decode(pt, scheme)
 
-    @test all(isapprox.(msg, res, atol=sketch.ring_param.m / sketch.scaling_factor))
+    @test all(isapprox(msg, res, atol=sketch.ring_param.m / sketch.scaling_factor))
 end
 
 @testset "Padd_test" begin
@@ -31,8 +31,8 @@ end
     key = ternary_ringkey(us, ring_param.N, hw)
     set_encryptor!(key, scheme)
 
-    msg1 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
-    msg2 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
+    msg1 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
+    msg2 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
     pt1 = encode(msg1, scheme)
     pt2 = encode(msg2, scheme)
     ct = encrypt(pt1, scheme)
@@ -41,7 +41,7 @@ end
     decrypt_to!(pt1, ct, scheme)
     res = decode(pt1, scheme)
 
-    @test all(isapprox.(msg1 + msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
+    @test all(isapprox(msg1 + msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
 end
 
 @testset "Cadd_test" begin
@@ -55,8 +55,8 @@ end
     key = ternary_ringkey(us, ring_param.N, hw)
     set_encryptor!(key, scheme)
 
-    msg1 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
-    msg2 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
+    msg1 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
+    msg2 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
     pt1 = encode(msg1, scheme)
     pt2 = encode(msg2, scheme)
 
@@ -67,7 +67,7 @@ end
     decrypt_to!(pt1, ct1, scheme)
     res = decode(pt1, scheme)
 
-    @test all(isapprox.(msg1 + msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
+    @test all(isapprox(msg1 + msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
 end
 
 @testset "Psub_test" begin
@@ -81,8 +81,8 @@ end
     key = ternary_ringkey(us, ring_param.N, hw)
     set_encryptor!(key, scheme)
 
-    msg1 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
-    msg2 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
+    msg1 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
+    msg2 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
     pt1 = encode(msg1, scheme)
     pt2 = encode(msg2, scheme)
     ct = encrypt(pt1, scheme)
@@ -91,13 +91,13 @@ end
     decrypt_to!(pt2, ct, scheme)
     res = decode(pt2, scheme)
 
-    @test all(isapprox.(msg1 - msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
+    @test all(isapprox(msg1 - msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
 
     sub_to!(ct, pt1, ct, scheme)
     decrypt_to!(pt1, ct, scheme)
     res = decode(pt1, scheme)
 
-    @test all(isapprox.(msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
+    @test all(isapprox(msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
 end
 
 @testset "Csub_test" begin
@@ -111,8 +111,8 @@ end
     key = ternary_ringkey(us, ring_param.N, hw)
     set_encryptor!(key, scheme)
 
-    msg1 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
-    msg2 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
+    msg1 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
+    msg2 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
     pt1 = encode(msg1, scheme)
     pt2 = encode(msg2, scheme)
 
@@ -123,7 +123,7 @@ end
     decrypt_to!(pt1, ct1, scheme)
     res = decode(pt1, scheme)
 
-    @test all(isapprox.(msg1 - msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
+    @test all(isapprox(msg1 - msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
 end
 
 @testset "mul_test" begin
@@ -137,8 +137,8 @@ end
     key = ternary_ringkey(us, ring_param.N, hw)
     set_encryptor!(key, scheme)
 
-    msg1 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
-    msg2 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
+    msg1 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
+    msg2 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
     pt1 = encode(msg1, scheme)
     pt2 = encode(msg2, scheme)
     ct = encrypt(pt1, scheme)
@@ -147,7 +147,7 @@ end
     decrypt_to!(pt1, ct, scheme)
     res = decode(pt1, scheme)
 
-    @test all(isapprox.(msg1 .* msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
+    @test all(isapprox(msg1 .* msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
 end
 
 @testset "Cmul_test" begin
@@ -161,8 +161,8 @@ end
     key = ternary_ringkey(us, ring_param.N, hw)
     set_encryptor!(key, scheme)
 
-    msg1 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
-    msg2 = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
+    msg1 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
+    msg2 = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
     pt1 = encode(msg1, scheme)
     pt2 = encode(msg2, scheme)
 
@@ -176,7 +176,7 @@ end
     decrypt_to!(pt1, ct1, scheme)
     res = decode(pt1, scheme)
 
-    @test all(isapprox.(msg1 .* msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
+    @test all(isapprox(msg1 .* msg2, res, atol=sketch.ring_param.m / sketch.scaling_factor))
 end
 
 @testset "rotate_test" begin
@@ -190,7 +190,7 @@ end
     key = ternary_ringkey(us, ring_param.N, hw)
     set_encryptor!(key, scheme)
 
-    msg = ComplexDF64.(rand(ComplexF64, scheme.oper.packer.k))
+    msg = ComplexBF.(rand(ComplexF64, scheme.oper.packer.k))
     pt = encode(msg, scheme)
     ct = encrypt(pt, scheme)
 
@@ -202,5 +202,9 @@ end
     decrypt_to!(pt, ct, scheme)
     res = decode(pt, scheme)
 
-    @test all(isapprox.((@view msg[1:end-1]), (@view res[2:end]), atol=sketch.ring_param.m / sketch.scaling_factor)) && isapprox(msg[end], res[1], atol=sketch.ring_param.m / sketch.scaling_factor)
+    tol = sketch.ring_param.m / sketch.scaling_factor
+    approxfirst = all(isapprox.(msg[1:end-1], res[2:end], atol=tol))
+    approxlast = isapprox(msg[end], res[1], atol=tol)
+
+    @test approxfirst && approxlast
 end

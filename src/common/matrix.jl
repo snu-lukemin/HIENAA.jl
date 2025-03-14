@@ -1,80 +1,24 @@
-
-get_bsgs_param(n::Int64) = begin
+get_bsgs_param(n::Int64)::Tuple{Int64,Int64} = begin
     n1 = ceil(Int64, sqrt(n))
     n2 = ceil(Int64, n / n1)
     n1, n2
 end
 
 """
-    PlainMatrix(M::Matrix{UInt64}, scheme::IntScheme; BSGSparam::Tuple{Int64,Int64}=(0, 0))
-    PlainMatrix(M::Matrix{<:Complex{<:AbstractFloat}}, scheme::CKKSScheme; BSGSparam::Tuple{Int64,Int64}=(0, 0))
+    PlainMatrix(M::Matrix{<:Number}, level::Integer, scheme::HEScheme; BSGSparam::Tuple{Int64,Int64}=(0, 0))
 
 A struct for diagonal-packed matrices.
 The input matrix should be a square matrix, and the number of rows should divide the packing parameter.
+We require the evaluated level for the best performance / noise.
 """
 struct PlainMatrix
     diag::Dict{Int64,PlainPoly}
     BSGSparam::Tuple{Int64,Int64}
 
-    function PlainMatrix(M::Matrix{UInt64}, scheme::IntScheme; BSGSparam::Tuple{Int64,Int64}=(0, 0))
-        oper = scheme.oper
-        row, col = size(M)
-        @assert row == col "Currently, only square matrices are supported."
-        @assert !ismissing(oper.packer) "The operator must have a packer."
-        @assert typeof(oper.packer) == IntPackerSubring "The packer must be a subring packer."
-        @assert oper.packer.k % row == 0 "The number of rows must divide the packing parameter."
+    PlainMatrix(diag::Dict{Int64,PlainPoly}, BSGSparam::Tuple{Int64,Int64})::PlainMatrix = new(diag, BSGSparam)
 
-        res = Dict{Int64,PlainPoly}()
-        mattmp = Vector{UInt64}(undef, row)
-        n1, n2 = BSGSparam == (0, 0) ? get_bsgs_param(row) : BSGSparam
-        @assert n1 * n2 ≥ row "Something is wrong with the BSGS parameters."
-
-        for i = 0:n2-1
-            for j = 0:n1-1
-                i * n1 + j ≥ row && break
-
-                @inbounds for k = 0:row-1
-                    mattmp[k+1] = M[k+1, mod(k - i * n1 - j, row)+1]
-                end
-                all(iszero, mattmp) && continue
-
-                circshift!(mattmp, -i * n1)
-                res[i*n1+j] = encode(mattmp, scheme)
-            end
-        end
-
-        new(res, (n1, n2))
-    end
-
-    function PlainMatrix(M::Matrix{<:Complex{<:AbstractFloat}}, scheme::CKKSScheme; BSGSparam::Tuple{Int64,Int64}=(0, 0))
-        oper = scheme.oper
-        row, col = size(M)
-        @assert row == col "Currently, only square matrices are supported."
-        @assert !ismissing(oper.packer) "The operator must have a packer."
-        @assert typeof(oper.packer) == ComplexPackerPow2 "The packer must be a subring packer."
-        @assert oper.packer.k % row == 0 "The number of rows must divide the packing parameter."
-
-        res = Dict{Int64,PlainPoly}()
-        mattmp = Vector{ComplexDF64}(undef, row)
-        n1, n2 = BSGSparam == (0, 0) ? get_bsgs_param(row) : BSGSparam
-        @assert n1 * n2 ≥ row "Something is wrong with the BSGS parameters."
-
-        for i = 0:n2-1
-            for j = 0:n1-1
-                i * n1 + j ≥ row && break
-
-                @inbounds for k = 0:row-1
-                    mattmp[k+1] = M[k+1, mod(k - i * n1 - j, row)+1]
-                end
-                all(x -> isapprox(x, 0, atol=1 / oper.scaling_factor), mattmp) && continue
-
-                circshift!(mattmp, -i * n1)
-                res[i*n1+j] = encode(mattmp, scheme)
-            end
-        end
-
-        new(res, (n1, n2))
-    end
+    PlainMatrix(M::Matrix{<:Number}, level::Integer, scheme::HEScheme; BSGSparam::Tuple{Int64,Int64}=(0, 0))::PlainMatrix = 
+        PlainMatrix(M, level, scheme.oper, BSGSparam=BSGSparam)
 end
 
 """
@@ -82,15 +26,15 @@ end
 
 Get the list of keys required for the multiplication with the given matrix.
 """
-function get_required_key_list(M::PlainMatrix)
+function get_required_key_list(M::PlainMatrix)::Vector{Tuple{Int64}}
     res = Vector{Tuple{Int64}}(undef, 0)
     n1, n2 = M.BSGSparam
     for i = 0:n2-1
         check = false
-        for j = 1:n1-1
+        for j = 0:n1-1
             if haskey(M.diag, i * n1 + j)
                 check = true
-                if (j,) ∉ res
+                if j ≠ 0 && (j,) ∉ res
                     push!(res, (j,))
                 end
             end
@@ -110,54 +54,64 @@ end
 
 Multiply the given matrix with the ciphertext.
 """
-function mul(M::PlainMatrix, x::HECiphertext, scheme::HEScheme)
-    oper = scheme.oper
+function mul(M::PlainMatrix, x::HECiphertext, scheme::HEScheme)::HECiphertext
+    atk, oper = scheme.atk, scheme.oper
+    mul(M, x, atk, oper)
+end
 
-    res = similar(x)
-    tmp = oper.ct_buff[3][1:length(x.val)]
-    tmp2 = oper.ct_buff[4][1:length(x.val)]
-    tmp.level[], tmp2.level[] = x.level[], x.level[]
+function _mul_RLWE!(M::PlainMatrix, input::RLWE, atk::Dict{Int64,RLEV}, oper::HEOperator)::Nothing
+    if input.auxQ[] ≠ 0
+        throw(DomainError("The input ciphertext should be NTT-friendly."))
+    end
 
-    adec = decompose_a(x, oper)
+    # Define structs.
+    operQ = oper.operQ
+    packer = oper.packer
+
+    # Decompose a part.
+    adec = decompose(PlainPoly(input.a), operQ)
     n1, n2 = M.BSGSparam
 
-    rotx = Vector{typeof(x)}(undef, n1)
-    rotx[1] = x
+    # Generate the rotation vectors.
+    rotx = Vector{RLWE}(undef, n1)
+    rotx[1] = deepcopy(input)
 
-    # TODO double hoisting.
+    # Generate the output ciphertexts.
+    ctlen = length(input)
+    tmp = oper.ct_buff[3].val[1:ctlen]
+    tmp2 = oper.ct_buff[4].val[1:ctlen]
 
+    # Perform BSGS algorithm.
+    cube, cubegen, m = packer.cube, packer.cubegen, packer.m
     diag = M.diag
     for i = 0:n2-1
-        initialise!(tmp2.val)
-        check = false
+        initialise!(tmp2)
+        checkj = false
         for j = 0:n1-1
             !haskey(diag, i * n1 + j) && continue
-            check = true
 
-            if !isassigned(rotx, j + 1)
-                rotx[j+1] = hoisted_rotate(adec, x, (j,), scheme)
-            end
+            autidx = gen_power_modmul(cubegen, cube, (j,), m)
+            !isassigned(rotx, j + 1) && (rotx[j+1] = hoisted_automorphism(adec, input, autidx, atk[autidx], operQ))
 
-            if j == 0
-                mul_to!(tmp2, diag[i*n1+j], rotx[j+1], oper, islazy=true)
+            if !checkj
+                mul_to!(tmp2, diag[i*n1+j], rotx[j+1], operQ)
+                checkj = true
             else
-                mul_to!(tmp, diag[i*n1+j], rotx[j+1], oper, islazy=true)
-                add_to!(tmp2, tmp, tmp2, oper)
+                mul_to!(tmp, diag[i*n1+j], rotx[j+1], operQ)
+                add_to!(tmp2, tmp, tmp2, operQ)
             end
         end
 
+        !checkj && continue
+
         if i == 0
-            copy!(res, tmp2)
+            copy!(input, tmp2)
         else
-            !check && continue
-            rotate_to!(tmp, tmp2, (i * n1,), scheme)
-            add_to!(res, tmp, res, oper)
+            autidx = gen_power_modmul(cubegen, cube, (i * n1,), m)
+            automorphism_to!(tmp, tmp2, autidx, atk[autidx], operQ)
+            add_to!(input, tmp, input, operQ)
         end
     end
 
-    rescale_to!(res, res, oper)
-
-    res
+    return nothing
 end
-
-export PlainMatrix, get_required_key_list

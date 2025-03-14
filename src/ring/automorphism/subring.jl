@@ -1,4 +1,4 @@
-function _automorphism!(idx::Int64, a::AbstractVector{UInt64}, isntt::Bool, ntter::SubringNTTransformer)
+function _automorphism!(idx::Int64, a::AbstractVector{UInt64}, isntt::Bool, ntter::SubringNTTransformer)::Nothing
     m, d, N, g, gpowN = ntter.m, ntter.d, ntter.N, ntter.g, ntter.gpowN
 
     idx = mod(idx, m)
@@ -11,4 +11,6 @@ function _automorphism!(idx::Int64, a::AbstractVector{UInt64}, isntt::Bool, ntte
             circshift!(a, isntt ? -shift : shift)
         end
     end
+
+    return nothing
 end

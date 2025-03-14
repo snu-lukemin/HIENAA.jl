@@ -1,4 +1,6 @@
-function gen_roots(N::Int64, radix::Int64, ξ::UInt64, Q::Modulus)
+abstract type CyclicNTTransformer <: NTTransformer end
+
+function gen_roots(N::Int64, radix::Int64, ξ::UInt64, Q::Modulus)::Tuple{Vector{UInt64}, Vector{UInt64}}
     (N == 1) && return UInt64[1], UInt64[1]
 
     ζ = ith_root_from_primitive_root(N, ξ, Q)
@@ -7,7 +9,7 @@ function gen_roots(N::Int64, radix::Int64, ξ::UInt64, Q::Modulus)
     Ψ, Ψinv = Vector{UInt64}(undef, N ÷ radix), Vector{UInt64}(undef, N ÷ radix)
     Ψ[begin], Ψinv[begin] = UInt64(1), UInt64(1)
     @inbounds for i = 2:N÷radix
-        Ψ[i], Ψinv[i] = _Bmul(ζ, Ψ[i-1], Q), _Bmul(ζinv, Ψinv[i-1], Q)
+        Ψ[i], Ψinv[i] = Bmul(ζ, Ψ[i-1], Q), Bmul(ζinv, Ψinv[i-1], Q)
     end
 
     scramble!(Ψ, radix)
@@ -20,8 +22,8 @@ function gen_roots(N::Int64, radix::Int64, ξ::UInt64, Q::Modulus)
         Ψ[i+len] = Ψ[i]
         Ψinv[i+len] = Ψinv[i]
         for j = 2len:len:(radix-1)*len
-            Ψ[i+j] = _Bmul(Ψ[i+j-len], Ψ[i], Q)
-            Ψinv[i+j] = _Bmul(Ψinv[i+j-len], Ψinv[i], Q)
+            Ψ[i+j] = Bmul(Ψ[i+j-len], Ψ[i], Q)
+            Ψinv[i+j] = Bmul(Ψinv[i+j-len], Ψinv[i], Q)
         end
     end
 
@@ -33,8 +35,8 @@ function gen_roots(N::Int64, radix::Int64, ξ::UInt64, Q::Modulus)
         end
         @inbounds for j = 2:radix-1
             for i = 1:len
-                Ψ[len*j+i] = _Bmul(Ψ[len*(j-1)+i], Ψ[len+i], Q)
-                Ψinv[len*j+i] = _Bmul(Ψinv[len*(j-1)+i], Ψinv[len+i], Q)
+                Ψ[len*j+i] = Bmul(Ψ[len*(j-1)+i], Ψ[len+i], Q)
+                Ψinv[len*j+i] = Bmul(Ψinv[len*(j-1)+i], Ψinv[len+i], Q)
             end
         end
     end
@@ -42,12 +44,12 @@ function gen_roots(N::Int64, radix::Int64, ξ::UInt64, Q::Modulus)
     ω = ith_root_from_primitive_root(radix, ξ, Q)
     Ψ[N+1], Ψinv[N+1] = ω, ω
     @inbounds for i = 2:radix-1
-        Ψ[N+i] = _Bmul(Ψ[N+i-1], ω, Q)
+        Ψ[N+i] = Bmul(Ψ[N+i-1], ω, Q)
         Ψinv[N+i] = Ψ[N+i]
     end
 
-    _Mform!(Ψ, Q)
-    _Mform!(Ψinv, Q)
+    Mform!(Ψ, Q)
+    Mform!(Ψinv, Q)
 
     Ψ, Ψinv
 end
@@ -55,19 +57,19 @@ end
 """
 An optimised normal input Cooley-Tukey algorithm.
 """
-function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vector{UInt64}, Ψ5::Vector{UInt64}, Ψ7::Vector{UInt64}, Q::Modulus)
+function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vector{UInt64}, Ψ5::Vector{UInt64}, Ψ7::Vector{UInt64}, Q::Modulus)::Nothing
     N = length(a)
     N2, N3, N5, N7 = factor2357(N)
     N23, N235 = N2 * N3, N2 * N3 * N5
 
-    _Mform!(a, Q)
+    Mform!(a, Q)
     twoQ = Q.Q << 1
     if N2 > 1
         @inbounds for id = 1:N2:N
             m, logkp1, k = 1, trailing_zeros(N2), N2 >> 1
             for j = id:id+k-1
                 t = a[j] ≥ twoQ ? a[j] - twoQ : a[j]
-                u = _lazy_Mmul(a[j+k], Ψ2[2], Q)
+                u = lazy_Mmul(a[j+k], Ψ2[2], Q)
 
                 a[j] = t + u
                 a[j+k] = t - u + twoQ
@@ -88,14 +90,14 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                         t6 = a[j+6] ≥ twoQ ? a[j+6] - twoQ : a[j+6]
                         t7 = a[j+7] ≥ twoQ ? a[j+7] - twoQ : a[j+7]
 
-                        u0 = _lazy_Mmul(a[j+k], Ψ2[m+i+1], Q)
-                        u1 = _lazy_Mmul(a[j+k+1], Ψ2[m+i+1], Q)
-                        u2 = _lazy_Mmul(a[j+k+2], Ψ2[m+i+1], Q)
-                        u3 = _lazy_Mmul(a[j+k+3], Ψ2[m+i+1], Q)
-                        u4 = _lazy_Mmul(a[j+k+4], Ψ2[m+i+1], Q)
-                        u5 = _lazy_Mmul(a[j+k+5], Ψ2[m+i+1], Q)
-                        u6 = _lazy_Mmul(a[j+k+6], Ψ2[m+i+1], Q)
-                        u7 = _lazy_Mmul(a[j+k+7], Ψ2[m+i+1], Q)
+                        u0 = lazy_Mmul(a[j+k], Ψ2[m+i+1], Q)
+                        u1 = lazy_Mmul(a[j+k+1], Ψ2[m+i+1], Q)
+                        u2 = lazy_Mmul(a[j+k+2], Ψ2[m+i+1], Q)
+                        u3 = lazy_Mmul(a[j+k+3], Ψ2[m+i+1], Q)
+                        u4 = lazy_Mmul(a[j+k+4], Ψ2[m+i+1], Q)
+                        u5 = lazy_Mmul(a[j+k+5], Ψ2[m+i+1], Q)
+                        u6 = lazy_Mmul(a[j+k+6], Ψ2[m+i+1], Q)
+                        u7 = lazy_Mmul(a[j+k+7], Ψ2[m+i+1], Q)
 
                         a[j] = t0 + u0
                         a[j+1] = t1 + u1
@@ -128,10 +130,10 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     t2 = a[j+2] ≥ twoQ ? a[j+2] - twoQ : a[j+2]
                     t3 = a[j+3] ≥ twoQ ? a[j+3] - twoQ : a[j+3]
 
-                    u0 = _lazy_Mmul(a[j+k], Ψ2[m+i+1], Q)
-                    u1 = _lazy_Mmul(a[j+k+1], Ψ2[m+i+1], Q)
-                    u2 = _lazy_Mmul(a[j+k+2], Ψ2[m+i+1], Q)
-                    u3 = _lazy_Mmul(a[j+k+3], Ψ2[m+i+1], Q)
+                    u0 = lazy_Mmul(a[j+k], Ψ2[m+i+1], Q)
+                    u1 = lazy_Mmul(a[j+k+1], Ψ2[m+i+1], Q)
+                    u2 = lazy_Mmul(a[j+k+2], Ψ2[m+i+1], Q)
+                    u3 = lazy_Mmul(a[j+k+3], Ψ2[m+i+1], Q)
 
                     a[j] = t0 + u0
                     a[j+1] = t1 + u1
@@ -153,8 +155,8 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     t0 = a[j] ≥ twoQ ? a[j] - twoQ : a[j]
                     t1 = a[j+1] ≥ twoQ ? a[j+1] - twoQ : a[j+1]
 
-                    u0 = _lazy_Mmul(a[j+k], Ψ2[m+i+1], Q)
-                    u1 = _lazy_Mmul(a[j+k+1], Ψ2[m+i+1], Q)
+                    u0 = lazy_Mmul(a[j+k], Ψ2[m+i+1], Q)
+                    u1 = lazy_Mmul(a[j+k+1], Ψ2[m+i+1], Q)
 
                     a[j] = t0 + u0
                     a[j+1] = t1 + u1
@@ -170,7 +172,7 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     j = i << 1 + id
 
                     t0 = a[j] ≥ twoQ ? a[j] - twoQ : a[j]
-                    u0 = _lazy_Mmul(a[j+k], Ψ2[m+i+1], Q)
+                    u0 = lazy_Mmul(a[j+k], Ψ2[m+i+1], Q)
 
                     a[j] = t0 + u0
                     a[j+k] = t0 - u0 + twoQ
@@ -190,8 +192,8 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     ψ1, ψ2 = Ψ3[m+i+1], Ψ3[2m+i+1]
                     for j = j1:j2
                         t0 = a[j] ≥ twoQ ? a[j] - twoQ : a[j]
-                        t1 = _lazy_Mmul(a[j+k], ψ1, Q)
-                        t2 = _lazy_Mmul(a[j+2k], ψ2, Q)
+                        t1 = lazy_Mmul(a[j+k], ψ1, Q)
+                        t2 = lazy_Mmul(a[j+2k], ψ2, Q)
 
                         x0 = t0 + t1
                         x0 ≥ twoQ && (x0 -= twoQ)
@@ -204,8 +206,8 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                         t0 ≥ twoQ && (t0 -= twoQ)
                         t1 ≥ twoQ && (t1 -= twoQ)
 
-                        x1 = t0 + _lazy_Mmul(t1, ω, Q)
-                        x2 = t0 + _lazy_Mmul(t1, ω2, Q)
+                        x1 = t0 + lazy_Mmul(t1, ω, Q)
+                        x2 = t0 + lazy_Mmul(t1, ω2, Q)
 
                         x1 ≥ twoQ && (x1 -= twoQ)
                         x2 ≥ twoQ && (x2 -= twoQ)
@@ -231,10 +233,10 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     ψ1, ψ2, ψ3, ψ4 = Ψ5[m+i+1], Ψ5[2m+i+1], Ψ5[3m+i+1], Ψ5[4m+i+1]
                     for j = j1:j2
                         t0 = a[j] ≥ twoQ ? a[j] - twoQ : a[j]
-                        t1 = _lazy_Mmul(a[j+k], ψ1, Q)
-                        t2 = _lazy_Mmul(a[j+2k], ψ2, Q)
-                        t3 = _lazy_Mmul(a[j+3k], ψ3, Q)
-                        t4 = _lazy_Mmul(a[j+4k], ψ4, Q)
+                        t1 = lazy_Mmul(a[j+k], ψ1, Q)
+                        t2 = lazy_Mmul(a[j+2k], ψ2, Q)
+                        t3 = lazy_Mmul(a[j+3k], ψ3, Q)
+                        t4 = lazy_Mmul(a[j+4k], ψ4, Q)
 
                         x0 = t0 + t1
                         x0 ≥ twoQ && (x0 -= twoQ)
@@ -255,30 +257,30 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                         t2 ≥ twoQ && (t2 -= twoQ)
                         t3 ≥ twoQ && (t3 -= twoQ)
 
-                        x1 = t0 + _lazy_Mmul(t1, ω, Q)
-                        x2 = t0 + _lazy_Mmul(t1, ω2, Q)
-                        x3 = t0 + _lazy_Mmul(t1, ω3, Q)
-                        x4 = t0 + _lazy_Mmul(t1, ω4, Q)
+                        x1 = t0 + lazy_Mmul(t1, ω, Q)
+                        x2 = t0 + lazy_Mmul(t1, ω2, Q)
+                        x3 = t0 + lazy_Mmul(t1, ω3, Q)
+                        x4 = t0 + lazy_Mmul(t1, ω4, Q)
 
                         x1 ≥ twoQ && (x1 -= twoQ)
                         x2 ≥ twoQ && (x2 -= twoQ)
                         x3 ≥ twoQ && (x3 -= twoQ)
                         x4 ≥ twoQ && (x4 -= twoQ)
 
-                        x1 += _lazy_Mmul(t2, ω2, Q)
-                        x2 += _lazy_Mmul(t2, ω4, Q)
-                        x3 += _lazy_Mmul(t2, ω, Q)
-                        x4 += _lazy_Mmul(t2, ω3, Q)
+                        x1 += lazy_Mmul(t2, ω2, Q)
+                        x2 += lazy_Mmul(t2, ω4, Q)
+                        x3 += lazy_Mmul(t2, ω, Q)
+                        x4 += lazy_Mmul(t2, ω3, Q)
 
                         x1 ≥ twoQ && (x1 -= twoQ)
                         x2 ≥ twoQ && (x2 -= twoQ)
                         x3 ≥ twoQ && (x3 -= twoQ)
                         x4 ≥ twoQ && (x4 -= twoQ)
 
-                        x1 += _lazy_Mmul(t3, ω3, Q)
-                        x2 += _lazy_Mmul(t3, ω, Q)
-                        x3 += _lazy_Mmul(t3, ω4, Q)
-                        x4 += _lazy_Mmul(t3, ω2, Q)
+                        x1 += lazy_Mmul(t3, ω3, Q)
+                        x2 += lazy_Mmul(t3, ω, Q)
+                        x3 += lazy_Mmul(t3, ω4, Q)
+                        x4 += lazy_Mmul(t3, ω2, Q)
 
                         x1 ≥ twoQ && (x1 -= twoQ)
                         x2 ≥ twoQ && (x2 -= twoQ)
@@ -307,12 +309,12 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                 ψ1, ψ2, ψ3, ψ4, ψ5, ψ6 = Ψ7[m+i+1], Ψ7[2m+i+1], Ψ7[3m+i+1], Ψ7[4m+i+1], Ψ7[5m+i+1], Ψ7[6m+i+1]
                 for j = j1:j2
                     t0 = a[j] ≥ twoQ ? a[j] - twoQ : a[j]
-                    t1 = _lazy_Mmul(a[j+k], ψ1, Q)
-                    t2 = _lazy_Mmul(a[j+2k], ψ2, Q)
-                    t3 = _lazy_Mmul(a[j+3k], ψ3, Q)
-                    t4 = _lazy_Mmul(a[j+4k], ψ4, Q)
-                    t5 = _lazy_Mmul(a[j+5k], ψ5, Q)
-                    t6 = _lazy_Mmul(a[j+6k], ψ6, Q)
+                    t1 = lazy_Mmul(a[j+k], ψ1, Q)
+                    t2 = lazy_Mmul(a[j+2k], ψ2, Q)
+                    t3 = lazy_Mmul(a[j+3k], ψ3, Q)
+                    t4 = lazy_Mmul(a[j+4k], ψ4, Q)
+                    t5 = lazy_Mmul(a[j+5k], ψ5, Q)
+                    t6 = lazy_Mmul(a[j+6k], ψ6, Q)
 
                     x0 = t0 + t1
                     x0 ≥ twoQ && (x0 -= twoQ)
@@ -341,12 +343,12 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     t4 ≥ twoQ && (t4 -= twoQ)
                     t5 ≥ twoQ && (t5 -= twoQ)
 
-                    x1 = t0 + _lazy_Mmul(t1, ω, Q)
-                    x2 = t0 + _lazy_Mmul(t1, ω2, Q)
-                    x3 = t0 + _lazy_Mmul(t1, ω3, Q)
-                    x4 = t0 + _lazy_Mmul(t1, ω4, Q)
-                    x5 = t0 + _lazy_Mmul(t1, ω5, Q)
-                    x6 = t0 + _lazy_Mmul(t1, ω6, Q)
+                    x1 = t0 + lazy_Mmul(t1, ω, Q)
+                    x2 = t0 + lazy_Mmul(t1, ω2, Q)
+                    x3 = t0 + lazy_Mmul(t1, ω3, Q)
+                    x4 = t0 + lazy_Mmul(t1, ω4, Q)
+                    x5 = t0 + lazy_Mmul(t1, ω5, Q)
+                    x6 = t0 + lazy_Mmul(t1, ω6, Q)
 
                     x1 ≥ twoQ && (x1 -= twoQ)
                     x2 ≥ twoQ && (x2 -= twoQ)
@@ -355,12 +357,12 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     x5 ≥ twoQ && (x5 -= twoQ)
                     x6 ≥ twoQ && (x6 -= twoQ)
 
-                    x1 += _lazy_Mmul(t2, ω2, Q)
-                    x2 += _lazy_Mmul(t2, ω4, Q)
-                    x3 += _lazy_Mmul(t2, ω6, Q)
-                    x4 += _lazy_Mmul(t2, ω, Q)
-                    x5 += _lazy_Mmul(t2, ω3, Q)
-                    x6 += _lazy_Mmul(t2, ω5, Q)
+                    x1 += lazy_Mmul(t2, ω2, Q)
+                    x2 += lazy_Mmul(t2, ω4, Q)
+                    x3 += lazy_Mmul(t2, ω6, Q)
+                    x4 += lazy_Mmul(t2, ω, Q)
+                    x5 += lazy_Mmul(t2, ω3, Q)
+                    x6 += lazy_Mmul(t2, ω5, Q)
 
                     x1 ≥ twoQ && (x1 -= twoQ)
                     x2 ≥ twoQ && (x2 -= twoQ)
@@ -369,12 +371,12 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     x5 ≥ twoQ && (x5 -= twoQ)
                     x6 ≥ twoQ && (x6 -= twoQ)
 
-                    x1 += _lazy_Mmul(t3, ω3, Q)
-                    x2 += _lazy_Mmul(t3, ω6, Q)
-                    x3 += _lazy_Mmul(t3, ω2, Q)
-                    x4 += _lazy_Mmul(t3, ω5, Q)
-                    x5 += _lazy_Mmul(t3, ω, Q)
-                    x6 += _lazy_Mmul(t3, ω4, Q)
+                    x1 += lazy_Mmul(t3, ω3, Q)
+                    x2 += lazy_Mmul(t3, ω6, Q)
+                    x3 += lazy_Mmul(t3, ω2, Q)
+                    x4 += lazy_Mmul(t3, ω5, Q)
+                    x5 += lazy_Mmul(t3, ω, Q)
+                    x6 += lazy_Mmul(t3, ω4, Q)
 
                     x1 ≥ twoQ && (x1 -= twoQ)
                     x2 ≥ twoQ && (x2 -= twoQ)
@@ -383,12 +385,12 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     x5 ≥ twoQ && (x5 -= twoQ)
                     x6 ≥ twoQ && (x6 -= twoQ)
 
-                    x1 += _lazy_Mmul(t4, ω4, Q)
-                    x2 += _lazy_Mmul(t4, ω, Q)
-                    x3 += _lazy_Mmul(t4, ω5, Q)
-                    x4 += _lazy_Mmul(t4, ω2, Q)
-                    x5 += _lazy_Mmul(t4, ω6, Q)
-                    x6 += _lazy_Mmul(t4, ω3, Q)
+                    x1 += lazy_Mmul(t4, ω4, Q)
+                    x2 += lazy_Mmul(t4, ω, Q)
+                    x3 += lazy_Mmul(t4, ω5, Q)
+                    x4 += lazy_Mmul(t4, ω2, Q)
+                    x5 += lazy_Mmul(t4, ω6, Q)
+                    x6 += lazy_Mmul(t4, ω3, Q)
 
                     x1 ≥ twoQ && (x1 -= twoQ)
                     x2 ≥ twoQ && (x2 -= twoQ)
@@ -397,12 +399,12 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
                     x5 ≥ twoQ && (x5 -= twoQ)
                     x6 ≥ twoQ && (x6 -= twoQ)
 
-                    x1 += _lazy_Mmul(t5, ω5, Q)
-                    x2 += _lazy_Mmul(t5, ω3, Q)
-                    x3 += _lazy_Mmul(t5, ω, Q)
-                    x4 += _lazy_Mmul(t5, ω6, Q)
-                    x5 += _lazy_Mmul(t5, ω4, Q)
-                    x6 += _lazy_Mmul(t5, ω2, Q)
+                    x1 += lazy_Mmul(t5, ω5, Q)
+                    x2 += lazy_Mmul(t5, ω3, Q)
+                    x3 += lazy_Mmul(t5, ω, Q)
+                    x4 += lazy_Mmul(t5, ω6, Q)
+                    x5 += lazy_Mmul(t5, ω4, Q)
+                    x6 += lazy_Mmul(t5, ω2, Q)
 
                     x1 ≥ twoQ && (x1 -= twoQ)
                     x2 ≥ twoQ && (x2 -= twoQ)
@@ -424,18 +426,20 @@ function _ntt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2::Vector{UInt64}, Ψ3::Vec
         end
     end
 
-    _iMform!(a, Q)
+    iMform!(a, Q)
+
+    return nothing
 end
 
 """
 An optimised normal input Gentleman-Sande algorithm.
 """
-function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3inv::Vector{UInt64}, Ψ5inv::Vector{UInt64}, Ψ7inv::Vector{UInt64}, Q::Modulus)
+function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3inv::Vector{UInt64}, Ψ5inv::Vector{UInt64}, Ψ7inv::Vector{UInt64}, Q::Modulus)::Nothing
     N = length(a)
     N2, N3, N5, N7 = factor2357(N)
     N23, N235 = N2 * N3, N2 * N3 * N5
 
-    _Mform!(a, Q)
+    Mform!(a, Q)
     twoQ = Q.Q << 1
     if N2 > 1
         @inbounds for id = 1:N2:N
@@ -447,7 +451,7 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
 
                 a[j] = t0 + u0
                 a[j] ≥ twoQ && (a[j] -= twoQ)
-                a[j+k] = _lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[m+i+1], Q)
+                a[j+k] = lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[m+i+1], Q)
             end
             m >>= 1
             logkp1 += 1
@@ -468,8 +472,8 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     a[j] ≥ twoQ && (a[j] -= twoQ)
                     a[j+1] ≥ twoQ && (a[j+1] -= twoQ)
 
-                    a[j+k] = _lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[m+i+1], Q)
-                    a[j+k+1] = _lazy_Mmul(t1 - u1 + twoQ, Ψ2inv[m+i+1], Q)
+                    a[j+k] = lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[m+i+1], Q)
+                    a[j+k+1] = lazy_Mmul(t1 - u1 + twoQ, Ψ2inv[m+i+1], Q)
                 end
                 m >>= 1
                 logkp1 += 1
@@ -499,10 +503,10 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     a[j+2] ≥ twoQ && (a[j+2] -= twoQ)
                     a[j+3] ≥ twoQ && (a[j+3] -= twoQ)
 
-                    a[j+k] = _lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[m+i+1], Q)
-                    a[j+k+1] = _lazy_Mmul(t1 - u1 + twoQ, Ψ2inv[m+i+1], Q)
-                    a[j+k+2] = _lazy_Mmul(t2 - u2 + twoQ, Ψ2inv[m+i+1], Q)
-                    a[j+k+3] = _lazy_Mmul(t3 - u3 + twoQ, Ψ2inv[m+i+1], Q)
+                    a[j+k] = lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[m+i+1], Q)
+                    a[j+k+1] = lazy_Mmul(t1 - u1 + twoQ, Ψ2inv[m+i+1], Q)
+                    a[j+k+2] = lazy_Mmul(t2 - u2 + twoQ, Ψ2inv[m+i+1], Q)
+                    a[j+k+3] = lazy_Mmul(t3 - u3 + twoQ, Ψ2inv[m+i+1], Q)
                 end
                 m >>= 1
                 logkp1 += 1
@@ -549,14 +553,14 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                         a[j+6] ≥ twoQ ? (a[j+6] -= twoQ) : a[j+6]
                         a[j+7] ≥ twoQ ? (a[j+7] -= twoQ) : a[j+7]
 
-                        a[j+k] = _lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[m+i+1], Q)
-                        a[j+k+1] = _lazy_Mmul(t1 - u1 + twoQ, Ψ2inv[m+i+1], Q)
-                        a[j+k+2] = _lazy_Mmul(t2 - u2 + twoQ, Ψ2inv[m+i+1], Q)
-                        a[j+k+3] = _lazy_Mmul(t3 - u3 + twoQ, Ψ2inv[m+i+1], Q)
-                        a[j+k+4] = _lazy_Mmul(t4 - u4 + twoQ, Ψ2inv[m+i+1], Q)
-                        a[j+k+5] = _lazy_Mmul(t5 - u5 + twoQ, Ψ2inv[m+i+1], Q)
-                        a[j+k+6] = _lazy_Mmul(t6 - u6 + twoQ, Ψ2inv[m+i+1], Q)
-                        a[j+k+7] = _lazy_Mmul(t7 - u7 + twoQ, Ψ2inv[m+i+1], Q)
+                        a[j+k] = lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[m+i+1], Q)
+                        a[j+k+1] = lazy_Mmul(t1 - u1 + twoQ, Ψ2inv[m+i+1], Q)
+                        a[j+k+2] = lazy_Mmul(t2 - u2 + twoQ, Ψ2inv[m+i+1], Q)
+                        a[j+k+3] = lazy_Mmul(t3 - u3 + twoQ, Ψ2inv[m+i+1], Q)
+                        a[j+k+4] = lazy_Mmul(t4 - u4 + twoQ, Ψ2inv[m+i+1], Q)
+                        a[j+k+5] = lazy_Mmul(t5 - u5 + twoQ, Ψ2inv[m+i+1], Q)
+                        a[j+k+6] = lazy_Mmul(t6 - u6 + twoQ, Ψ2inv[m+i+1], Q)
+                        a[j+k+7] = lazy_Mmul(t7 - u7 + twoQ, Ψ2inv[m+i+1], Q)
                     end
                 end
                 m >>= 1
@@ -570,7 +574,7 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     u0 = a[j+k]
                     a[j] = t0 + u0
                     a[j] ≥ twoQ && (a[j] -= twoQ)
-                    a[j+k] = _lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[2], Q)
+                    a[j+k] = lazy_Mmul(t0 - u0 + twoQ, Ψ2inv[2], Q)
                 end
             end
         end
@@ -591,24 +595,24 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                         t2 = a[j+2k]
 
                         x0 = t0 + t1
-                        x1 = t0 + _lazy_Mmul(t1, ω2, Q)
-                        x2 = t0 + _lazy_Mmul(t1, ω, Q)
+                        x1 = t0 + lazy_Mmul(t1, ω2, Q)
+                        x2 = t0 + lazy_Mmul(t1, ω, Q)
 
                         x0 ≥ twoQ && (x0 -= twoQ)
                         x1 ≥ twoQ && (x1 -= twoQ)
                         x2 ≥ twoQ && (x2 -= twoQ)
 
                         x0 += t2
-                        x1 += _lazy_Mmul(t2, ω, Q)
-                        x2 += _lazy_Mmul(t2, ω2, Q)
+                        x1 += lazy_Mmul(t2, ω, Q)
+                        x2 += lazy_Mmul(t2, ω2, Q)
 
                         x0 ≥ twoQ && (x0 -= twoQ)
                         x1 ≥ twoQ && (x1 -= twoQ)
                         x2 ≥ twoQ && (x2 -= twoQ)
 
                         a[j] = x0
-                        a[j+k] = _lazy_Mmul(x1, ψ1, Q)
-                        a[j+2k] = _lazy_Mmul(x2, ψ2, Q)
+                        a[j+k] = lazy_Mmul(x1, ψ1, Q)
+                        a[j+2k] = lazy_Mmul(x2, ψ2, Q)
                     end
                 end
                 m ÷= 3
@@ -634,10 +638,10 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                         t4 = a[j+4k]
 
                         x0 = t0 + t1
-                        x1 = t0 + _lazy_Mmul(t1, ω4, Q)
-                        x2 = t0 + _lazy_Mmul(t1, ω3, Q)
-                        x3 = t0 + _lazy_Mmul(t1, ω2, Q)
-                        x4 = t0 + _lazy_Mmul(t1, ω, Q)
+                        x1 = t0 + lazy_Mmul(t1, ω4, Q)
+                        x2 = t0 + lazy_Mmul(t1, ω3, Q)
+                        x3 = t0 + lazy_Mmul(t1, ω2, Q)
+                        x4 = t0 + lazy_Mmul(t1, ω, Q)
 
                         x0 ≥ twoQ && (x0 -= twoQ)
                         x1 ≥ twoQ && (x1 -= twoQ)
@@ -646,10 +650,10 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                         x4 ≥ twoQ && (x4 -= twoQ)
 
                         x0 += t2
-                        x1 += _lazy_Mmul(t2, ω3, Q)
-                        x2 += _lazy_Mmul(t2, ω, Q)
-                        x3 += _lazy_Mmul(t2, ω4, Q)
-                        x4 += _lazy_Mmul(t2, ω2, Q)
+                        x1 += lazy_Mmul(t2, ω3, Q)
+                        x2 += lazy_Mmul(t2, ω, Q)
+                        x3 += lazy_Mmul(t2, ω4, Q)
+                        x4 += lazy_Mmul(t2, ω2, Q)
 
                         x0 ≥ twoQ && (x0 -= twoQ)
                         x1 ≥ twoQ && (x1 -= twoQ)
@@ -658,10 +662,10 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                         x4 ≥ twoQ && (x4 -= twoQ)
 
                         x0 += t3
-                        x1 += _lazy_Mmul(t3, ω2, Q)
-                        x2 += _lazy_Mmul(t3, ω4, Q)
-                        x3 += _lazy_Mmul(t3, ω, Q)
-                        x4 += _lazy_Mmul(t3, ω3, Q)
+                        x1 += lazy_Mmul(t3, ω2, Q)
+                        x2 += lazy_Mmul(t3, ω4, Q)
+                        x3 += lazy_Mmul(t3, ω, Q)
+                        x4 += lazy_Mmul(t3, ω3, Q)
 
                         x0 ≥ twoQ && (x0 -= twoQ)
                         x1 ≥ twoQ && (x1 -= twoQ)
@@ -670,10 +674,10 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                         x4 ≥ twoQ && (x4 -= twoQ)
 
                         x0 += t4
-                        x1 += _lazy_Mmul(t4, ω, Q)
-                        x2 += _lazy_Mmul(t4, ω2, Q)
-                        x3 += _lazy_Mmul(t4, ω3, Q)
-                        x4 += _lazy_Mmul(t4, ω4, Q)
+                        x1 += lazy_Mmul(t4, ω, Q)
+                        x2 += lazy_Mmul(t4, ω2, Q)
+                        x3 += lazy_Mmul(t4, ω3, Q)
+                        x4 += lazy_Mmul(t4, ω4, Q)
 
                         x0 ≥ twoQ && (x0 -= twoQ)
                         x1 ≥ twoQ && (x1 -= twoQ)
@@ -682,10 +686,10 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                         x4 ≥ twoQ && (x4 -= twoQ)
 
                         a[j] = x0
-                        a[j+k] = _lazy_Mmul(x1, ψ1, Q)
-                        a[j+2k] = _lazy_Mmul(x2, ψ2, Q)
-                        a[j+3k] = _lazy_Mmul(x3, ψ3, Q)
-                        a[j+4k] = _lazy_Mmul(x4, ψ4, Q)
+                        a[j+k] = lazy_Mmul(x1, ψ1, Q)
+                        a[j+2k] = lazy_Mmul(x2, ψ2, Q)
+                        a[j+3k] = lazy_Mmul(x3, ψ3, Q)
+                        a[j+4k] = lazy_Mmul(x4, ψ4, Q)
                     end
                 end
                 m ÷= 5
@@ -712,12 +716,12 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     t6 = a[j+6k]
 
                     x0 = t0 + t1
-                    x1 = t0 + _lazy_Mmul(t1, ω6, Q)
-                    x2 = t0 + _lazy_Mmul(t1, ω5, Q)
-                    x3 = t0 + _lazy_Mmul(t1, ω4, Q)
-                    x4 = t0 + _lazy_Mmul(t1, ω3, Q)
-                    x5 = t0 + _lazy_Mmul(t1, ω2, Q)
-                    x6 = t0 + _lazy_Mmul(t1, ω, Q)
+                    x1 = t0 + lazy_Mmul(t1, ω6, Q)
+                    x2 = t0 + lazy_Mmul(t1, ω5, Q)
+                    x3 = t0 + lazy_Mmul(t1, ω4, Q)
+                    x4 = t0 + lazy_Mmul(t1, ω3, Q)
+                    x5 = t0 + lazy_Mmul(t1, ω2, Q)
+                    x6 = t0 + lazy_Mmul(t1, ω, Q)
 
                     x0 ≥ twoQ && (x0 -= twoQ)
                     x1 ≥ twoQ && (x1 -= twoQ)
@@ -728,12 +732,12 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     x6 ≥ twoQ && (x6 -= twoQ)
 
                     x0 += t2
-                    x1 += _lazy_Mmul(t2, ω5, Q)
-                    x2 += _lazy_Mmul(t2, ω3, Q)
-                    x3 += _lazy_Mmul(t2, ω, Q)
-                    x4 += _lazy_Mmul(t2, ω6, Q)
-                    x5 += _lazy_Mmul(t2, ω4, Q)
-                    x6 += _lazy_Mmul(t2, ω2, Q)
+                    x1 += lazy_Mmul(t2, ω5, Q)
+                    x2 += lazy_Mmul(t2, ω3, Q)
+                    x3 += lazy_Mmul(t2, ω, Q)
+                    x4 += lazy_Mmul(t2, ω6, Q)
+                    x5 += lazy_Mmul(t2, ω4, Q)
+                    x6 += lazy_Mmul(t2, ω2, Q)
 
                     x0 ≥ twoQ && (x0 -= twoQ)
                     x1 ≥ twoQ && (x1 -= twoQ)
@@ -744,12 +748,12 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     x6 ≥ twoQ && (x6 -= twoQ)
 
                     x0 += t3
-                    x1 += _lazy_Mmul(t3, ω4, Q)
-                    x2 += _lazy_Mmul(t3, ω, Q)
-                    x3 += _lazy_Mmul(t3, ω5, Q)
-                    x4 += _lazy_Mmul(t3, ω2, Q)
-                    x5 += _lazy_Mmul(t3, ω6, Q)
-                    x6 += _lazy_Mmul(t3, ω3, Q)
+                    x1 += lazy_Mmul(t3, ω4, Q)
+                    x2 += lazy_Mmul(t3, ω, Q)
+                    x3 += lazy_Mmul(t3, ω5, Q)
+                    x4 += lazy_Mmul(t3, ω2, Q)
+                    x5 += lazy_Mmul(t3, ω6, Q)
+                    x6 += lazy_Mmul(t3, ω3, Q)
 
                     x0 ≥ twoQ && (x0 -= twoQ)
                     x1 ≥ twoQ && (x1 -= twoQ)
@@ -760,12 +764,12 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     x6 ≥ twoQ && (x6 -= twoQ)
 
                     x0 += t4
-                    x1 += _lazy_Mmul(t4, ω3, Q)
-                    x2 += _lazy_Mmul(t4, ω6, Q)
-                    x3 += _lazy_Mmul(t4, ω2, Q)
-                    x4 += _lazy_Mmul(t4, ω5, Q)
-                    x5 += _lazy_Mmul(t4, ω, Q)
-                    x6 += _lazy_Mmul(t4, ω4, Q)
+                    x1 += lazy_Mmul(t4, ω3, Q)
+                    x2 += lazy_Mmul(t4, ω6, Q)
+                    x3 += lazy_Mmul(t4, ω2, Q)
+                    x4 += lazy_Mmul(t4, ω5, Q)
+                    x5 += lazy_Mmul(t4, ω, Q)
+                    x6 += lazy_Mmul(t4, ω4, Q)
 
                     x0 ≥ twoQ && (x0 -= twoQ)
                     x1 ≥ twoQ && (x1 -= twoQ)
@@ -776,12 +780,12 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     x6 ≥ twoQ && (x6 -= twoQ)
 
                     x0 += t5
-                    x1 += _lazy_Mmul(t5, ω2, Q)
-                    x2 += _lazy_Mmul(t5, ω4, Q)
-                    x3 += _lazy_Mmul(t5, ω6, Q)
-                    x4 += _lazy_Mmul(t5, ω, Q)
-                    x5 += _lazy_Mmul(t5, ω3, Q)
-                    x6 += _lazy_Mmul(t5, ω5, Q)
+                    x1 += lazy_Mmul(t5, ω2, Q)
+                    x2 += lazy_Mmul(t5, ω4, Q)
+                    x3 += lazy_Mmul(t5, ω6, Q)
+                    x4 += lazy_Mmul(t5, ω, Q)
+                    x5 += lazy_Mmul(t5, ω3, Q)
+                    x6 += lazy_Mmul(t5, ω5, Q)
 
                     x0 ≥ twoQ && (x0 -= twoQ)
                     x1 ≥ twoQ && (x1 -= twoQ)
@@ -792,12 +796,12 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     x6 ≥ twoQ && (x6 -= twoQ)
 
                     x0 += t6
-                    x1 += _lazy_Mmul(t6, ω, Q)
-                    x2 += _lazy_Mmul(t6, ω2, Q)
-                    x3 += _lazy_Mmul(t6, ω3, Q)
-                    x4 += _lazy_Mmul(t6, ω4, Q)
-                    x5 += _lazy_Mmul(t6, ω5, Q)
-                    x6 += _lazy_Mmul(t6, ω6, Q)
+                    x1 += lazy_Mmul(t6, ω, Q)
+                    x2 += lazy_Mmul(t6, ω2, Q)
+                    x3 += lazy_Mmul(t6, ω3, Q)
+                    x4 += lazy_Mmul(t6, ω4, Q)
+                    x5 += lazy_Mmul(t6, ω5, Q)
+                    x6 += lazy_Mmul(t6, ω6, Q)
 
                     x0 ≥ twoQ && (x0 -= twoQ)
                     x1 ≥ twoQ && (x1 -= twoQ)
@@ -808,12 +812,12 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
                     x6 ≥ twoQ && (x6 -= twoQ)
 
                     a[j] = x0
-                    a[j+k] = _lazy_Mmul(x1, ψ1, Q)
-                    a[j+2k] = _lazy_Mmul(x2, ψ2, Q)
-                    a[j+3k] = _lazy_Mmul(x3, ψ3, Q)
-                    a[j+4k] = _lazy_Mmul(x4, ψ4, Q)
-                    a[j+5k] = _lazy_Mmul(x5, ψ5, Q)
-                    a[j+6k] = _lazy_Mmul(x6, ψ6, Q)
+                    a[j+k] = lazy_Mmul(x1, ψ1, Q)
+                    a[j+2k] = lazy_Mmul(x2, ψ2, Q)
+                    a[j+3k] = lazy_Mmul(x3, ψ3, Q)
+                    a[j+4k] = lazy_Mmul(x4, ψ4, Q)
+                    a[j+5k] = lazy_Mmul(x5, ψ5, Q)
+                    a[j+6k] = lazy_Mmul(x6, ψ6, Q)
                 end
             end
             m ÷= 7
@@ -821,10 +825,12 @@ function _intt_2a3b5c7d!(a::AbstractVector{UInt64}, Ψ2inv::Vector{UInt64}, Ψ3i
         end
     end
 
-    _iMform!(a, Q)
+    iMform!(a, Q)
+
+    return nothing
 end
 
-struct CyclicNTTransformer2a3b5c7d
+struct CyclicNTTransformer2a3b5c7d <: CyclicNTTransformer
     Q::Modulus
     N::Int64
     N⁻¹::UInt64
@@ -840,8 +846,10 @@ struct CyclicNTTransformer2a3b5c7d
     idx::Vector{Int64}
     buff::Vector{UInt64}
 
-    function CyclicNTTransformer2a3b5c7d(N::Int64, Q::Modulus)
-        @assert Q.Q % N == 1 "$(Q.Q) does not have enough factors to perform NTT."
+    function CyclicNTTransformer2a3b5c7d(N::Int64, Q::Modulus)::CyclicNTTransformer2a3b5c7d
+        if Q.Q % N ≠ 1
+            throw(DomainError("Modulus does not have enough factors to perform NTT."))
+        end
 
         N2, N3, N5, N7 = factor2357(N)
 
@@ -863,14 +871,14 @@ struct CyclicNTTransformer2a3b5c7d
             buff = Vector{UInt64}(undef, N)
         else
             idx = Int64[]
-            buff = Int64[]
+            buff = UInt64[]
         end
 
         new(Q, N, invmod(N, Q), Ψ2, Ψ3, Ψ5, Ψ7, Ψ2inv, Ψ3inv, Ψ5inv, Ψ7inv, iseasy, idx, buff)
     end
 end
 
-@views _ntt!(a::AbstractVector{UInt64}, ntter::CyclicNTTransformer2a3b5c7d) = begin
+@views ntt!(a::AbstractVector{UInt64}, ntter::CyclicNTTransformer2a3b5c7d)::Nothing = begin
     if !ntter.iseasy
         @inbounds @simd for i = eachindex(a)
             ntter.buff[i] = a[ntter.idx[i]]
@@ -881,14 +889,18 @@ end
     end
 
     _ntt_2a3b5c7d!(a, ntter.Ψ2, ntter.Ψ3, ntter.Ψ5, ntter.Ψ7, ntter.Q)
+
+    return nothing
 end
 
-@views _ntt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::CyclicNTTransformer2a3b5c7d) = begin
+@views ntt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::CyclicNTTransformer2a3b5c7d)::Nothing = begin
     @. res = a
-    _ntt!(res, ntter)
+    ntt!(res, ntter)
+
+    return nothing
 end
 
-@views _intt!(a::AbstractVector{UInt64}, ntter::CyclicNTTransformer2a3b5c7d) = begin
+@views intt!(a::AbstractVector{UInt64}, ntter::CyclicNTTransformer2a3b5c7d)::Nothing = begin
     _intt_2a3b5c7d!(a, ntter.Ψ2inv, ntter.Ψ3inv, ntter.Ψ5inv, ntter.Ψ7inv, ntter.Q)
 
     if !ntter.iseasy
@@ -900,15 +912,19 @@ end
         end
     end
 
-    _Bmul_to!(a, ntter.N⁻¹, a, ntter.Q)
+    Bmul_to!(a, ntter.N⁻¹, a, ntter.Q)
+
+    return nothing
 end
 
-@views _intt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::CyclicNTTransformer2a3b5c7d) = begin
+@views intt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::CyclicNTTransformer2a3b5c7d)::Nothing = begin
     @. res = a
-    _intt!(res, ntter)
+    intt!(res, ntter)
+
+    return nothing
 end
 
-struct CyclicNTTransformerBluestein
+struct CyclicNTTransformerBluestein <: CyclicNTTransformer      
     Q::Modulus
     m::Int64
     N::Int64
@@ -928,12 +944,16 @@ struct CyclicNTTransformerBluestein
     chirp::Vector{UInt64}
     chirpinv::Vector{UInt64}
 
-    function CyclicNTTransformerBluestein(m::Int64, Q::Modulus)
+    function CyclicNTTransformerBluestein(m::Int64, Q::Modulus)::CyclicNTTransformerBluestein
         N = next2a3b5c7d(2m - 1)
         N2, N3, N5, N7 = factor2357(N)
 
-        @assert all(Q.Q .% 2m .== 1) "$(Q.Q) does not have $(2m)-th root of unity."
-        @assert all(Q.Q .% N .== 1) "$(Q.Q) does not have enough two factor for Bluestein NTT."
+        if Q.Q % 2m ≠ 1
+            throw(DomainError("Modulus does not have $(2m)-th root of unity."))
+        end
+        if Q.Q % N ≠ 1
+            throw(DomainError("Modulus does not have enough two factor for Bluestein NTT."))
+        end
 
         ξ = primitive_root_finder(Q)
 
@@ -942,7 +962,7 @@ struct CyclicNTTransformerBluestein
         Ψ5, Ψ5inv = gen_roots(N5, 5, ξ, Q)
         Ψ7, Ψ7inv = gen_roots(N7, 7, ξ, Q)
 
-        idx = [i^2 % 2m for i = 0:m-1]
+        idx = Int64[i^2 % 2m for i = 0:m-1]
         ζ = ith_root_from_primitive_root(2m, ξ, Q)
         ζinv = powermod(ζ, 2m - 1, Q)
         Ζ, Ζinv = powermod.(ζ, idx, Ref(Q)), powermod.(ζinv, idx, Ref(Q))
@@ -962,9 +982,9 @@ struct CyclicNTTransformerBluestein
 
         # We scale chirp and chirpinv instead of dividing by N for convolution, for simplicity.
         chirp = vcat(Ζinv, zeros(UInt64, N - 2m + 1), Ζinv[end:-1:2])
-        _Bmul_to!(chirp, invmod(N, Q), chirp, Q)
+        Bmul_to!(chirp, invmod(N, Q), chirp, Q)
         chirpinv = vcat(Ζ, zeros(UInt64, N - 2m + 1), Ζ[end:-1:2])
-        _Bmul_to!(chirpinv, invmod(N * m, Q), chirpinv, Q)
+        Bmul_to!(chirpinv, invmod(N * m, Q), chirpinv, Q)
 
         if !iseasy
             @inbounds @simd for i = eachindex(chirp)
@@ -987,72 +1007,78 @@ struct CyclicNTTransformerBluestein
 end
 
 # Bluestein NTT
-@views function _ntt!(a::AbstractVector{UInt64}, ntter::CyclicNTTransformerBluestein)
+@views function ntt!(a::AbstractVector{UInt64}, ntter::CyclicNTTransformerBluestein)::Nothing
     @. ntter.buff = 0
     if ntter.iseasy
         @inbounds for i = 1:ntter.m
-            ntter.buff[i] = _lazy_Bmul(a[i], ntter.Ζ[i], ntter.Q)
+            ntter.buff[i] = lazy_Bmul(a[i], ntter.Ζ[i], ntter.Q)
         end
     else
         @inbounds for i = 1:ntter.N
-            ntter.idx[i] ≤ ntter.m && (ntter.buff[i] = _lazy_Bmul(a[ntter.idx[i]], ntter.Ζ[ntter.idx[i]], ntter.Q))
+            ntter.idx[i] ≤ ntter.m && (ntter.buff[i] = lazy_Bmul(a[ntter.idx[i]], ntter.Ζ[ntter.idx[i]], ntter.Q))
         end
     end
 
     _ntt_2a3b5c7d!(ntter.buff, ntter.Ψ2, ntter.Ψ3, ntter.Ψ5, ntter.Ψ7, ntter.Q)
-    _lazy_Bmul_to!(ntter.buff, ntter.buff, ntter.chirp, ntter.Q)
+    lazy_Bmul_to!(ntter.buff, ntter.buff, ntter.chirp, ntter.Q)
     _intt_2a3b5c7d!(ntter.buff, ntter.Ψ2inv, ntter.Ψ3inv, ntter.Ψ5inv, ntter.Ψ7inv, ntter.Q)
 
     if ntter.iseasy
         @inbounds for i = 1:ntter.m
-            a[i] = _Bmul(ntter.buff[i], ntter.Ζ[i], ntter.Q)
+            a[i] = Bmul(ntter.buff[i], ntter.Ζ[i], ntter.Q)
         end
     else
         @inbounds for i = 1:ntter.N
-            ntter.idx[i] ≤ ntter.m && (a[ntter.idx[i]] = _Bmul(ntter.buff[i], ntter.Ζ[ntter.idx[i]], ntter.Q))
+            ntter.idx[i] ≤ ntter.m && (a[ntter.idx[i]] = Bmul(ntter.buff[i], ntter.Ζ[ntter.idx[i]], ntter.Q))
         end
     end
+
+    return nothing
 end
 
-@views _ntt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::CyclicNTTransformerBluestein) = begin
+@views ntt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::CyclicNTTransformerBluestein)::Nothing = begin
     @. res = a
-    _ntt!(res, ntter)
+    ntt!(res, ntter)
+
+    return nothing
 end
 
 # Bluestein iNTT
-@views function _intt!(a::AbstractVector{UInt64}, ntter::CyclicNTTransformerBluestein)
+@views function intt!(a::AbstractVector{UInt64}, ntter::CyclicNTTransformerBluestein)::Nothing
     @. ntter.buff = 0
     if ntter.iseasy
         @inbounds for i = 1:ntter.m
-            ntter.buff[i] = _lazy_Bmul(a[i], ntter.Ζinv[i], ntter.Q)
+            ntter.buff[i] = lazy_Bmul(a[i], ntter.Ζinv[i], ntter.Q)
         end
     else
         @inbounds for i = 1:ntter.N
-            ntter.idx[i] ≤ ntter.m && (ntter.buff[i] = _lazy_Bmul(a[ntter.idx[i]], ntter.Ζinv[ntter.idx[i]], ntter.Q))
+            ntter.idx[i] ≤ ntter.m && (ntter.buff[i] = lazy_Bmul(a[ntter.idx[i]], ntter.Ζinv[ntter.idx[i]], ntter.Q))
         end
     end
 
     _ntt_2a3b5c7d!(ntter.buff, ntter.Ψ2, ntter.Ψ3, ntter.Ψ5, ntter.Ψ7, ntter.Q)
-    _lazy_Bmul_to!(ntter.buff, ntter.buff, ntter.chirpinv, ntter.Q)
+    lazy_Bmul_to!(ntter.buff, ntter.buff, ntter.chirpinv, ntter.Q)
     _intt_2a3b5c7d!(ntter.buff, ntter.Ψ2inv, ntter.Ψ3inv, ntter.Ψ5inv, ntter.Ψ7inv, ntter.Q)
 
     if ntter.iseasy
         @inbounds for i = 1:ntter.m
-            a[i] = _Bmul(ntter.buff[i], ntter.Ζinv[i], ntter.Q)
+            a[i] = Bmul(ntter.buff[i], ntter.Ζinv[i], ntter.Q)
         end
     else
         @inbounds for i = 1:ntter.N
-            ntter.idx[i] ≤ ntter.m && (a[ntter.idx[i]] = _Bmul(ntter.buff[i], ntter.Ζinv[ntter.idx[i]], ntter.Q))
+            ntter.idx[i] ≤ ntter.m && (a[ntter.idx[i]] = Bmul(ntter.buff[i], ntter.Ζinv[ntter.idx[i]], ntter.Q))
         end
     end
+
+    return nothing
 end
 
-@views _intt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::CyclicNTTransformerBluestein) = begin
+@views intt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::CyclicNTTransformerBluestein)::Nothing = begin
     @. res = a
-    _intt!(res, ntter)
+    intt!(res, ntter)
+
+    return nothing
 end
 
-const CyclicNTTransformer = Union{CyclicNTTransformer2a3b5c7d,CyclicNTTransformerBluestein}
-
-(::Type{CyclicNTTransformer})(m::Int64, Q::Modulus) =
+(::Type{CyclicNTTransformer})(m::Int64, Q::Modulus)::CyclicNTTransformer =
     is2a3b5c7d(m) ? CyclicNTTransformer2a3b5c7d(m, Q) : CyclicNTTransformerBluestein(m, Q)

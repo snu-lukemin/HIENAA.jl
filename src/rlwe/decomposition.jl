@@ -9,7 +9,7 @@ struct Decomposer
     dlen::Int64
     glen::Int64
 
-    function Decomposer(P::Moduli, Q::Moduli, dlen::Int64=0)
+    function Decomposer(P::Moduli, Q::Moduli, dlen::Int64=0)::Decomposer
         Plen, Qlen = length(P), length(Q)
         dlen == 0 && (dlen = Plen)
         glen = ceil(Int64, Qlen / dlen)
@@ -43,7 +43,7 @@ struct Decomposer
         new(be, gvec, Plen, Qlen, dlen, glen)
     end
 
-    function Decomposer(Q::Moduli, dlen::Int64=1)
+    function Decomposer(Q::Moduli, dlen::Int64=1)::Decomposer
         Qlen = length(Q)
         glen = ceil(Int64, Qlen / dlen)
 
@@ -74,29 +74,37 @@ struct Decomposer
     end
 end
 
-function _decompose(x::PlainPoly, decer::Decomposer)
+function decompose(x::PlainPoly, decer::Decomposer)::Tensor
     xlen, Plen, dlen = length(x), decer.Plen, decer.dlen
     res = Tensor(x.val.N, Plen + xlen, ceil(Int64, xlen / dlen))
-    _decompose_to!(res, x, decer)
+    decompose_to!(res, x, decer)
     res
 end
 
-@views function _decompose_to!(res::Tensor, x::PlainPoly, decer::Decomposer)
+@views function decompose_to!(res::Tensor, x::PlainPoly, decer::Decomposer)::Nothing
     be, Plen, dlen, glen, xlen = decer.be, decer.Plen, decer.dlen, decer.glen, length(x)
 
-    @assert !x.val.isntt[] "The input polynomial should not be in the evaluation form."
-    @assert dlen * glen ≥ xlen "The decomposition parameter does not match the input polynomial."
-    
+    if x.val.isntt[]
+        throw(DomainError("The input polynomial should not be in the evaluation form."))
+    end
+    if dlen * glen < xlen
+        throw(DomainError("The decomposition parameter does not match the input polynomial."))
+    end
+
     degree, len = size(res)
-    @assert degree == ceil(Int64, xlen / dlen) && len == xlen + Plen "The decomposition parameter does not match the input and output polynomials."
+    if degree ≠ ceil(Int64, xlen / dlen) || len ≠ xlen + Plen
+        throw(DomainError("The decomposition parameter does not match the input and output polynomials."))
+    end
 
     isPQ, auxQ = (Plen ≠ 0), x.auxQ[]
     @inbounds for i = 1:degree
         idx1, idx2 = 1 + (i - 1) * dlen, min(i * dlen, xlen)
-        basis_extend!(res.vals[i].coeffs, x.val.coeffs[idx1:idx2], be[i])
+        basis_extend_to!(res.vals[i].coeffs, x.val.coeffs[idx1:idx2], be[i])
         res.vals[i].isntt[] = false
     end
 
     res.isPQ[] = isPQ
     res.auxQ[] = auxQ
+
+    return nothing
 end

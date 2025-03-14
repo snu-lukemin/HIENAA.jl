@@ -1,7 +1,7 @@
 """
 This function evaluates the automorphism X -> Xⁱᵈˣ.
 """
-@views function _automorphism!(idx::Int64, a::AbstractVector{UInt64}, isntt::Bool, autbuff::AbstractVector{UInt64}, Q::Modulus)
+@views function _automorphism!(idx::Int64, a::AbstractVector{UInt64}, isntt::Bool, autbuff::AbstractVector{UInt64}, Q::Modulus)::Nothing
     N = length(autbuff)
     m = N << 1
 
@@ -25,16 +25,18 @@ This function evaluates the automorphism X -> Xⁱᵈˣ.
             if j < N
                 a[j+1] = autbuff[i+1]
             else
-                a[j-N+1] = _neg(autbuff[i+1], Q)
+                a[j-N+1] = neg(autbuff[i+1], Q)
             end
         end
     end
+
+    return nothing
 end
 
 """
 This function evaluates the automorphism X -> Xⁱᵈˣ.
 """
-@views function _automorphism!(idx::Int64, a::AbstractVector{UInt64}, isntt::Bool, autbuff::Vector{UInt64}, ntter::CyclotomicNTTransformerArb, rdtor::ReductorCyclo)
+@views function _automorphism!(idx::Int64, a::AbstractVector{UInt64}, isntt::Bool, autbuff::Vector{UInt64}, ntter::CyclotomicNTTransformerArb, rdtor::ReductorCyclo)::Nothing
     m, N = length(autbuff), length(a)
     idx = Base.mod(idx, m)
 
@@ -120,8 +122,10 @@ This function evaluates the automorphism X -> Xⁱᵈˣ.
             autbuff[(idx*i)%m+1] = a[i+1]
         end
 
-        _reduce!(autbuff, rdtor)
+        reduce!(autbuff, rdtor)
 
         @. a = autbuff[1:N]
     end
+
+    return nothing
 end

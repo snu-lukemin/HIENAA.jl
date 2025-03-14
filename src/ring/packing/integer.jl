@@ -1,4 +1,11 @@
-struct IntPackerPow2
+"""
+    IntPacker(t::Integer, param::RingParam)
+
+IntPacker is an abstract type which supports SIMD packing modulo t.
+"""
+abstract type IntPacker end
+
+struct IntPackerPow2 <: IntPacker
     m::Int64
     N::Int64
     d::Int64
@@ -9,8 +16,10 @@ struct IntPackerPow2
     buff::Vector{UInt64}
     ntter::CyclotomicNTTransformerPow2
 
-    function IntPackerPow2(m::Integer, p::Integer, r::Integer)
-        @assert isprime(p) && isodd(p) "Only odd prime power plaintext moduli are supported."
+    function IntPackerPow2(m::Integer, p::Integer, r::Integer)::IntPackerPow2
+        if !isprime(p) || iseven(p)
+            throw(DomainError("Only odd prime power plaintext moduli are supported."))
+        end
 
         d, N = ord(p, m), m >> 1
         k = N ÷ d
@@ -24,14 +33,18 @@ struct IntPackerPow2
 
             new(m, N, d, k, pr, cube, cubegen, buff, ntter)
         else
-            @error "Only the primes of the form 8k+1 are supported now."
+            error("Only the primes of the form 8k+1 are supported now.")
         end
     end
 end
 
-@views function pack_to!(res::AbstractVector{UInt64}, msg::AbstractVector{UInt64}, packer::IntPackerPow2)
-    @assert length(res) == packer.N "The length of the output message should be equal to the polynomial degree."
-    @assert length(msg) == packer.k "The length of the input message should be equal to the number of slots."
+@views function pack_to!(res::AbstractVector{UInt64}, msg::AbstractVector{UInt64}, packer::IntPackerPow2)::Nothing
+    if length(res) ≠ packer.N
+        throw(DimensionMismatch("The length of the output message should be equal to the polynomial degree."))
+    end
+    if length(msg) ≠ packer.k
+        throw(DimensionMismatch("The length of the input message should be equal to the number of slots."))
+    end
 
     k, d, ntter = packer.k, packer.d, packer.ntter
 
@@ -43,17 +56,23 @@ end
         tmp = 5tmp & mask
     end
     scramble!(res[1:d:end], 2)
-    _intt!(res[1:d:end], ntter)
+    intt!(res[1:d:end], ntter)
+
+    return nothing
 end
 
-@views function unpack_to!(res::AbstractVector{UInt64}, pt::AbstractVector{UInt64}, packer::IntPackerPow2)
-    @assert length(res) == packer.k "The length of the output message should be equal to the number of slots."
-    @assert length(pt) == packer.N "The length of the input message should be equal to the polynomial degree."
+@views function unpack_to!(res::AbstractVector{UInt64}, pt::AbstractVector{UInt64}, packer::IntPackerPow2)::Nothing
+    if length(res) ≠ packer.k
+        throw(DimensionMismatch("The length of the output message should be equal to the number of slots."))
+    end
+    if length(pt) ≠ packer.N
+        throw(DimensionMismatch("The length of the input message should be equal to the polynomial degree."))
+    end
 
     k, d, buff, ntter = packer.k, packer.d, packer.buff, packer.ntter
 
     @. buff = pt[1:d:end]
-    _ntt!(buff, ntter)
+    ntt!(buff, ntter)
     scramble!(buff, 2)
     tmp, mask = 1, 2k - 1
     @inbounds for i = 0:k>>1-1
@@ -61,9 +80,11 @@ end
         res[k-i] = buff[(k-tmp>>1-1)+1]
         tmp = 5tmp & mask
     end
+
+    return nothing
 end
 
-struct IntPackerNTT
+struct IntPackerNTT <: IntPacker
     m::Int64
     N::Int64
     d::Int64
@@ -73,8 +94,10 @@ struct IntPackerNTT
     cubegen::Vector{Int64}
     ntter::CyclotomicNTTransformerArb
 
-    function IntPackerNTT(m::Integer, p::Integer, r::Integer)
-        @assert isprime(p) "Only prime power plaintext moduli are supported."
+    function IntPackerNTT(m::Integer, p::Integer, r::Integer)::IntPackerNTT
+        if !isprime(p)
+            throw(DomainError("Only prime power plaintext moduli are supported."))
+        end
         N = totient(m)
         pr = Modulus(p^r)
         ntter = CyclotomicNTTransformerArb(m, pr)
@@ -83,23 +106,31 @@ struct IntPackerNTT
     end
 end
 
-@views function pack_to!(res::AbstractVector{UInt64}, msg::AbstractVector{UInt64}, packer::IntPackerNTT)
-    @assert length(res) == length(msg) == packer.N "The length of the input and output messages should be equal to the polynomial degree."
+@views function pack_to!(res::AbstractVector{UInt64}, msg::AbstractVector{UInt64}, packer::IntPackerNTT)::Nothing
+    if !(length(res) == length(msg) == packer.N)
+        throw(DimensionMismatch("The length of the input and output messages should be equal to the polynomial degree."))
+    end
 
     @. res = msg
-    _intt!(res, packer.ntter)
+    intt!(res, packer.ntter)
+
+    return nothing
 end
 
-@views function unpack_to!(res::AbstractVector{UInt64}, pt::AbstractVector{UInt64}, packer::IntPackerNTT)
-    @assert length(res) == length(pt) == packer.N "The length of the input and output messages should be equal to the polynomial degree."
+@views function unpack_to!(res::AbstractVector{UInt64}, pt::AbstractVector{UInt64}, packer::IntPackerNTT)::Nothing
+    if !(length(res) == length(pt) == packer.N)
+        throw(DimensionMismatch("The length of the input and output messages should be equal to the polynomial degree."))
+    end
 
     @. res = pt
-    _ntt!(res, packer.ntter)
+    ntt!(res, packer.ntter)
+
+    return nothing
 end
 
 # Many thanks to Simon Pohmann for the helpful discussions.
 # We determine slot structure using an algorithm from https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8691744
-function factor_cyclotomic(m::Int64, p::Int64, r::Int64)
+function factor_cyclotomic(m::Int64, p::Int64, r::Int64)::Tuple{Vector{Int64},Vector{Int64},Vector{Vector{Int64}},Vector{UInt64}}
     N = totient(m)
     d = ord(p, m)
     k = N ÷ d
@@ -303,8 +334,8 @@ function factor_cyclotomic(m::Int64, p::Int64, r::Int64)
     cube, cubegen, facts, resol
 end
 
-find_and_save_factors(m::Int64, p::Int64, r::Int64) = begin
-    while (r + 1) * log2(p) ≤ 62
+find_and_save_factors(m::Int64, p::Int64, r::Int64)::Tuple{Vector{Int64},Vector{Int64},Vector{Vector{Int64}},Vector{UInt64}} = begin
+    while (r + 1) * log2(p) < 62
         r += 1
     end
 
@@ -313,15 +344,17 @@ find_and_save_factors(m::Int64, p::Int64, r::Int64) = begin
     cube, cubegen, factors, resol
 end
 
-save_factors(paramname::String, cube::Vector{Int64}, cubegen::Vector{Int64}, factors::Vector{Vector{Int64}}, resol::Vector{UInt64}) = begin
+save_factors(paramname::String, cube::Vector{Int64}, cubegen::Vector{Int64}, factors::Vector{Vector{Int64}}, resol::Vector{UInt64})::Nothing = begin
     path = String(@__DIR__) * "/factors.jl"
     chmod(path, 0o777)
     open(path, "a") do file
         println(file, paramname, " = (", cube, ", ", cubegen, ", ", factors, ", ", Int64.(resol), ")")
     end
+
+    return nothing
 end
 
-load_factors(m::Int64, p::Int64, r::Int64) = begin
+load_factors(m::Int64, p::Int64, r::Int64)::Tuple{Vector{Int64},Vector{Int64},Vector{Vector{Int64}},Vector{UInt64}} = begin
     factors = open(String(@__DIR__) * "/factors.jl") do file
         for str in eachline(file)
             if occursin("m$(m)p$(p)", str)
@@ -349,7 +382,7 @@ load_factors(m::Int64, p::Int64, r::Int64) = begin
     end
 end
 
-struct IntPackerArb
+struct IntPackerArb <: IntPacker
     m::Int64
     N::Int64
     d::Int64
@@ -362,13 +395,13 @@ struct IntPackerArb
     cyclo_rdtor::ReductorCycloWord
     slot_rdtor::Vector{ReductorArbWord}
 
-    function IntPackerArb(m::Integer, p::Integer, r::Integer)
+    function IntPackerArb(m::Integer, p::Integer, r::Integer)::IntPackerArb
         d, N = ord(p, m), totient(m)
         k = N ÷ d
         pr = Modulus(p^r)
 
         cube, cubegen, factors, resol = load_factors(m, p, r)
-        _Bred!(resol, pr)
+        Bred!(resol, pr)
         buff = Vector{UInt64}(undef, m)
         cyclo_rdtor = ReductorCycloWord(m, pr)
 
@@ -381,74 +414,86 @@ struct IntPackerArb
     end
 end
 
-@views function pack_to!(res::AbstractVector{UInt64}, msg::AbstractVector{UInt64}, packer::IntPackerArb)
+@views function pack_to!(res::AbstractVector{UInt64}, msg::AbstractVector{UInt64}, packer::IntPackerArb)::Nothing
     m, N, pr, cube, cubegen, resol, buff, cyclo_rdtor = packer.m, packer.N, packer.pr, packer.cube, packer.cubegen, packer.resol, packer.buff, packer.cyclo_rdtor
-
-    @assert length(res) == N "The length of the output message should be equal to the polynomial degree."
-    @assert length(msg) == packer.k "The length of the input message should be equal to the number of slots."
+    
+    if length(res) ≠ N
+        throw(DimensionMismatch("The length of the output message should be equal to the polynomial degree."))
+    end
+    if length(msg) ≠ packer.k
+        throw(DimensionMismatch("The length of the input message should be equal to the number of slots."))
+    end
 
     @. buff = 0
     if length(cubegen) == 1
         for i = 0:cube[1]-1
             tmp = powermod(cubegen[1], i, m)
-            buff[1] = _Bred(widemul(msg[i+1], resol[1]) + buff[1], pr)
+            buff[1] = Bred(widemul(msg[i+1], resol[1]) + buff[1], pr)
             for j = 1:N-1
-                buff[(tmp*j)%m+1] = _Bred(widemul(msg[i+1], resol[j+1]) + buff[(tmp*j)%m+1], pr)
+                buff[(tmp*j)%m+1] = Bred(widemul(msg[i+1], resol[j+1]) + buff[(tmp*j)%m+1], pr)
             end
         end
 
-        _reduce!(buff, cyclo_rdtor)
+        reduce!(buff, cyclo_rdtor)
         @. res = buff[1:N]
     elseif length(cubegen) == 2
         for i2 = 0:cube[2]-1, i1 = 0:cube[1]-1
             idx = 1 + i1 + cube[1] * i2
             tmp = powermod(cubegen[1], i1, m) * powermod(cubegen[2], i2, m) % m
-            buff[1] = _Bred(widemul(msg[idx], resol[1]) + buff[1], pr)
+            buff[1] = Bred(widemul(msg[idx], resol[1]) + buff[1], pr)
             for j = 1:N-1
-                buff[(tmp*j)%m+1] = _Bred(widemul(msg[idx], resol[j+1]) + buff[(tmp*j)%m+1], pr)
+                buff[(tmp*j)%m+1] = Bred(widemul(msg[idx], resol[j+1]) + buff[(tmp*j)%m+1], pr)
             end
         end
 
-        _reduce!(buff, cyclo_rdtor)
+        reduce!(buff, cyclo_rdtor)
         @. res = buff[1:N]
     elseif length(cubegen) == 3
         for i3 = 0:cube[3]-1, i2 = 0:cube[2]-1, i1 = 0:cube[1]-1
             idx = 1 + i1 + cube[1] * i2 + cube[1] * cube[2] * i3
             tmp = powermod(cubegen[1], i1, m) * powermod(cubegen[2], i2, m) * powermod(cubegen[3], i3, m) % m
-            buff[1] = _Bred(widemul(msg[idx], resol[1]) + buff[1], pr)
+            buff[1] = Bred(widemul(msg[idx], resol[1]) + buff[1], pr)
             for j = 1:N-1
-                buff[(tmp*j)%m+1] = _Bred(widemul(msg[idx], resol[j+1]) + buff[(tmp*j)%m+1], pr)
+                buff[(tmp*j)%m+1] = Bred(widemul(msg[idx], resol[j+1]) + buff[(tmp*j)%m+1], pr)
             end
         end
 
-        _reduce!(buff, cyclo_rdtor)
+        reduce!(buff, cyclo_rdtor)
         @. res = buff[1:N]
     elseif length(cubegen) == 4
         for i4 = cube[4] - 1, i3 = 0:cube[3]-1, i2 = 0:cube[2]-1, i1 = 0:cube[1]-1
             idx = 1 + i1 + cube[1] * i2 + cube[1] * cube[2] * i3 + cube[1] * cube[2] * cube[3] * i4
             tmp = powermod(cubegen[1], i1, m) * powermod(cubegen[2], i2, m) * powermod(cubegen[3], i3, m) * powermod(cubegen[4], i4, m) % m
-            buff[1] = _Bred(widemul(msg[idx], resol[1]) + buff[1], pr)
+            buff[1] = Bred(widemul(msg[idx], resol[1]) + buff[1], pr)
             for j = 1:N-1
-                buff[(tmp*j)%m+1] = _Bred(widemul(msg[idx], resol[j+1]) + buff[(tmp*j)%m+1], pr)
+                buff[(tmp*j)%m+1] = Bred(widemul(msg[idx], resol[j+1]) + buff[(tmp*j)%m+1], pr)
             end
         end
 
-        _reduce!(buff, cyclo_rdtor)
+        reduce!(buff, cyclo_rdtor)
         @. res = buff[1:N]
     end
+
+    return nothing
 end
 
-@views function unpack_to!(res::AbstractVector{UInt64}, pt::AbstractVector{UInt64}, packer::IntPackerArb)
+@views function unpack_to!(res::AbstractVector{UInt64}, pt::AbstractVector{UInt64}, packer::IntPackerArb)::Nothing
     buff, k, N, slot_rdtor = packer.buff, packer.k, packer.N, packer.slot_rdtor
 
-    @assert length(res) == k "The length of the output message should be equal to the number of slots."
-    @assert length(pt) == N "The length of the input message should be equal to the polynomial degree."
+    if length(res) ≠ k
+        throw(DimensionMismatch("The length of the output message should be equal to the number of slots."))
+    end
+    if length(pt) ≠ N
+        throw(DimensionMismatch("The length of the input message should be equal to the polynomial degree."))
+    end
 
     for i = eachindex(slot_rdtor)
         @. buff[1:N] = pt
-        _reduce!(buff[1:N], slot_rdtor[i])
+        reduce!(buff[1:N], slot_rdtor[i])
         res[i] = buff[1]
     end
+
+    return nothing
 end
 
 """
@@ -517,7 +562,7 @@ function resolution(m::Int64, p::Int64, r::Int64)::Vector{UInt64}
 end
 
 find_and_save_resolution(m::Int64, p::Int64, r::Int64)::Vector{UInt64} = begin
-    while (r + 1) * log2(p) ≤ 62
+    while (r + 1) * log2(p) < 62
         r += 1
     end
 
@@ -526,12 +571,14 @@ find_and_save_resolution(m::Int64, p::Int64, r::Int64)::Vector{UInt64} = begin
     resol
 end
 
-save_resolution(paramname::String, resol::Vector{UInt64}) = begin
+save_resolution(paramname::String, resol::Vector{UInt64})::Nothing = begin
     path = String(@__DIR__) * "/resolutions.jl"
     chmod(path, 0o777)
     open(path, "a") do file
         println(file, paramname, " = ", Int64.(resol))
     end
+
+    return nothing
 end
 
 function load_resolution(m::Int64, p::Int64, r::Int64)::Vector{UInt64}
@@ -554,7 +601,7 @@ function load_resolution(m::Int64, p::Int64, r::Int64)::Vector{UInt64}
     end
 end
 
-struct IntPackerSubring
+struct IntPackerSubring <: IntPacker
     m::Int64
     p::Int64
     r::Int64
@@ -570,17 +617,17 @@ struct IntPackerSubring
     resol::Vector{Vector{UInt64}}
     invresol::Vector{Vector{UInt64}}
 
-    @views function IntPackerSubring(m::Integer, d::Integer, p::Integer, r::Integer)
+    @views function IntPackerSubring(m::Integer, d::Integer, p::Integer, r::Integer)::IntPackerSubring
         ordp = ord(p, m)
         N, k = (m - 1) ÷ d, (m - 1) ÷ ordp
         pr = Modulus(p^r)
 
         resolution = load_resolution(m, p, r)
-        _Bred!(resolution, pr)
+        Bred!(resolution, pr)
 
         if N < k
             @inbounds for i = 1:k÷N-1
-                _add_to!(resolution[1:N], resolution[1:N], resolution[i*N+1:(i+1)*N], pr)
+                add_to!(resolution[1:N], resolution[1:N], resolution[i*N+1:(i+1)*N], pr)
             end
             resize!(resolution, N)
 
@@ -594,7 +641,7 @@ struct IntPackerSubring
         Plen = ceil(Int64, (log2(k) + 2r * log2(p)) / 62)
         convlen = is2a3b5c7d(k) ? k : next2a3b5c7d(2k - 1)
 
-        P = Modulus.(_find_prime_cyclic(convlen, 62, Plen))
+        P = Modulus.(find_prime_cyclic(convlen, 62, Plen))
         ntterP = CyclicNTTransformer[CyclicNTTransformer(convlen, Pi) for Pi = P]
         beP2pr = BasisExtender(P, [pr])
 
@@ -606,29 +653,33 @@ struct IntPackerSubring
         @inbounds for i = 1:Plen
             @. resol[i][1:k] = resolution
             @. resol[i][k+1:end] = 0
-            _ntt!(resol[i], ntterP[i])
+            ntt!(resol[i], ntterP[i])
         end
 
         # Generate inverse resolution
         isodd(ordp) && circshift!(resolution, k >> 1)
-        _Bmul_to!(resolution, UInt64(m), resolution, pr)
-        _add_to!(resolution, resolution, _Bred(ordp, pr), pr)
+        Bmul_to!(resolution, UInt64(m), resolution, pr)
+        add_to!(resolution, resolution, Bred(ordp, pr), pr)
         @inbounds for i = 1:Plen
             @. invresol[i][1:k] = resolution
             @. invresol[i][k+1:end] = 0
-            _ntt!(invresol[i], ntterP[i])
+            ntt!(invresol[i], ntterP[i])
         end
 
         new(m, p, r, N, k, pr, cube, cubegen, P, ntterP, beP2pr, buff, resol, invresol)
     end
 end
 
-@views function pack_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, packer::IntPackerSubring)
+@views function pack_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, packer::IntPackerSubring)::Nothing
     k, N, P, beP2pr = packer.k, packer.N, packer.P, packer.beP2pr
     ntterP, buff, resol = packer.ntterP, packer.buff, packer.resol
 
-    @assert k % length(a) == 0 "The length of the input message should divide the number of slots."
-    @assert length(res) == N "The length of the output message should be equal to the polynomial degree."
+    if k % length(a) ≠ 0
+        throw(DimensionMismatch("The length of the input message should divide the number of slots."))
+    end
+    if length(res) ≠ N
+        throw(DimensionMismatch("The length of the output message should be equal to the polynomial degree."))
+    end
 
     alen = length(a)
     @inbounds for i = eachindex(P)
@@ -638,63 +689,70 @@ end
         end
         @. buff[i][k+1:end] = 0
 
-        _ntt!(buff[i], ntterP[i])
-        _lazy_Bmul_to!(buff[i], buff[i], resol[i], P[i])
-        _intt!(buff[i], ntterP[i])
-        ntterP[i].N ≠ k && _add_to!(buff[i][1:k-1], buff[i][1:k-1], buff[i][k+1:2k-1], P[i])
+        ntt!(buff[i], ntterP[i])
+        lazy_Bmul_to!(buff[i], buff[i], resol[i], P[i])
+        intt!(buff[i], ntterP[i])
+        ntterP[i].N ≠ k && add_to!(buff[i][1:k-1], buff[i][1:k-1], buff[i][k+1:2k-1], P[i])
     end
-    basis_extend!(buff[end:end], 1:k, buff[1:end-1], 1:k, beP2pr)
+    basis_extend_to!(buff[end:end], 1:k, buff[1:end-1], 1:k, beP2pr)
 
     @inbounds for i = 0:N÷k-1
         @. res[i*k+1:(i+1)*k] = buff[end][1:k]
     end
+
+    return nothing
 end
 
-@views function unpack_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, packer::IntPackerSubring)
+@views function unpack_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, packer::IntPackerSubring)::Nothing
     k, N, P, beP2pr = packer.k, packer.N, packer.P, packer.beP2pr
     ntterP, buff, invresol = packer.ntterP, packer.buff, packer.invresol
 
-    @assert length(a) == N "The length of the input message should be equal to the polynomial degree."
-    @assert k % length(res) == 0 "The length of the output message should be equal to the number of slots."
+    if length(a) ≠ N
+        throw(DimensionMismatch("The length of the input message should be equal to the polynomial degree."))
+    end
+    if k % length(res) ≠ 0
+        throw(DimensionMismatch("The length of the output message should be equal to the number of slots."))
+    end
 
     @inbounds for i = eachindex(P)
         buff[i][1] = a[1]
         @. buff[i][2:k] = a[k:-1:2]
         @. buff[i][k+1:end] = 0
 
-        _ntt!(buff[i], ntterP[i])
-        _lazy_Bmul_to!(buff[i], buff[i], invresol[i], P[i])
-        _intt!(buff[i], ntterP[i])
-        ntterP[i].N ≠ k && _add_to!(buff[i][1:k-1], buff[i][1:k-1], buff[i][k+1:2k-1], P[i])
+        ntt!(buff[i], ntterP[i])
+        lazy_Bmul_to!(buff[i], buff[i], invresol[i], P[i])
+        intt!(buff[i], ntterP[i])
+        ntterP[i].N ≠ k && add_to!(buff[i][1:k-1], buff[i][1:k-1], buff[i][k+1:2k-1], P[i])
     end
-    basis_extend!(buff[end:end], 1:k, buff[1:end-1], 1:k, beP2pr)
+    basis_extend_to!(buff[end:end], 1:k, buff[1:end-1], 1:k, beP2pr)
 
     reslen = length(res)
     @. res = buff[end][1:reslen]
+
+    return nothing
 end
 
-"""
-    IntPacker(t::Integer, param::RingParam)
-
-IntPacker is an abstract type which supports SIMD packing modulo t.
-"""
-const IntPacker = Union{IntPackerPow2,IntPackerNTT,IntPackerArb,IntPackerSubring}
-
-(::Type{IntPacker})(t::Integer, param::RingParam) = begin
-    @assert typeof(param) ≠ CyclicParam "Cyclic parameters are not supported."
+(::Type{IntPacker})(t::Integer, param::RingParam)::IntPacker = begin
+    if isa(param, CyclicParam)
+        throw(DomainError("Cyclic parameters are not supported."))
+    end
 
     fac = factor(Dict, Int64(t))
-    @assert length(fac) == 1 "Only prime power plaintext moduli are supported."
+    if length(fac) ≠ 1
+        throw(DomainError("Only prime power plaintext moduli are supported."))
+    end
 
     m, p, r = param.m, first(keys(fac)), first(values(fac))
 
-    @assert (r + 1) * log2(p) ≤ 62 "The plaintext modulus is too large."
+    if (r + 1) * log2(p) >= 62
+        throw(DomainError("The plaintext modulus is too large."))
+    end
 
     if ispow2(m)
         IntPackerPow2(m, p, r)
     elseif (p - 1) % m == 0
         IntPackerNTT(m, p, r)
-    elseif typeof(param) == SubringParam
+    elseif isa(param, SubringParam)
         IntPackerSubring(m, param.d, p, r)
     else
         IntPackerArb(m, p, r)

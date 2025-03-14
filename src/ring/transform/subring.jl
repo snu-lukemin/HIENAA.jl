@@ -1,8 +1,8 @@
 """
-SubringNTTransformer is a struct which support the number theoretic transform (NTT) over the _subring.
+SubringNTTransformer is a struct which support the number theoretic transform (NTT) over the subring.
 You can generate a SubringNTTransformer over a ring Z[X]/(Φₘ(X), Q) with length N = (m-1)/d by ```SubringNTTransformer(m, d, Q)```
 """
-struct SubringNTTransformer
+struct SubringNTTransformer <: NTTransformer
     Q::Modulus
     m::Int64
     d::UInt64
@@ -15,10 +15,16 @@ struct SubringNTTransformer
     gpowN::Vector{Int32}
     ntter::CyclicNTTransformer2a3b5c7d
 
-    function SubringNTTransformer(m::Int64, d::Int64, Q::Modulus)
-        @assert isprime(m) "$m is not a prime number."
-        @assert (m - 1) % d == 0 "$d should divide $(m-1)."
-        @assert Q.Q % m == 1 "$(Q.Q) does not have enough factors to perform NTT."
+    function SubringNTTransformer(m::Int64, d::Int64, Q::Modulus)::SubringNTTransformer
+        if !isprime(m)
+            throw(DomainError("$(m) is not a prime number."))
+        end
+        if (m - 1) % d ≠ 0
+            throw(DomainError("$(d) should divide $(m-1)."))
+        end
+        if Q.Q % m ≠ 1
+            throw(DomainError("$(Q.Q) does not have enough factors to perform NTT."))
+        end
 
         g = primitive_root_finder(m)
         N = (m - 1) ÷ d
@@ -37,14 +43,14 @@ struct SubringNTTransformer
             ζgʲᴺ, ζinvgʲᴺ = powermod(ζgʲᴺ, gᴺ, Q), powermod(ζinvgʲᴺ, gᴺ, Q)
             ζgʲᴺgⁱ, ζinvgʲᴺgⁱ = ζgʲᴺ, ζinvgʲᴺ
             for i = 1:N
-                Ψ[i] = _add(Ψ[i], ζgʲᴺgⁱ, Q)
-                Ψinv[i] = _add(Ψinv[i], ζinvgʲᴺgⁱ, Q)
+                Ψ[i] = add(Ψ[i], ζgʲᴺgⁱ, Q)
+                Ψinv[i] = add(Ψinv[i], ζinvgʲᴺgⁱ, Q)
                 ζgʲᴺgⁱ, ζinvgʲᴺgⁱ = powermod(ζgʲᴺgⁱ, g, Q), powermod(ζinvgʲᴺgⁱ, g, Q)
             end
         end
 
-        _ntt!(Ψ, ntter)
-        _ntt!(Ψinv, ntter)
+        ntt!(Ψ, ntter)
+        ntt!(Ψinv, ntter)
 
         buff = Vector{UInt64}(undef, convlen)
         gpowN = Int32[powermod(g, i, m) for i = 0:N-1]
@@ -53,43 +59,47 @@ struct SubringNTTransformer
     end
 end
 
-@views function _ntt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::SubringNTTransformer)
+@views function ntt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::SubringNTTransformer)::Nothing
     buff, N, Q = ntter.buff, ntter.N, ntter.Q
 
     buff[1] = a[1]
     @. buff[2:N] = a[N:-1:2]
     @. buff[N+1:end] = 0
 
-    _ntt!(buff, ntter.ntter)
-    _lazy_Bmul_to!(buff, buff, ntter.Ψ, Q)
-    _intt!(buff, ntter.ntter)
+    ntt!(buff, ntter.ntter)
+    lazy_Bmul_to!(buff, buff, ntter.Ψ, Q)
+    intt!(buff, ntter.ntter)
 
-    length(buff) ≠ N && _add_to!(buff[1:N-1], buff[1:N-1], buff[N+1:2N-1], Q)
-    @. res = buff[1:N]
+    length(buff) ≠ N && add_to!(buff[1:N-1], buff[1:N-1], buff[N+1:2N-1], Q)
+    copy!(res, buff[1:N])
+
+    return nothing
 end
 
-_ntt!(a::AbstractVector{UInt64}, ntter::SubringNTTransformer) = _ntt_to!(a, a, ntter)
+ntt!(a::AbstractVector{UInt64}, ntter::SubringNTTransformer)::Nothing = ntt_to!(a, a, ntter)
 
-@views function _intt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::SubringNTTransformer)
+@views function intt_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}, ntter::SubringNTTransformer)::Nothing
     buff, N, d, minv, Q = ntter.buff, ntter.N, ntter.d, ntter.minv, ntter.Q
 
     buff[1] = a[1]
     @. buff[2:N] = a[N:-1:2]
     @. buff[N+1:end] = 0
 
-    _ntt!(buff, ntter.ntter)
-    _lazy_Bmul_to!(buff, buff, ntter.Ψinv, ntter.Q)
-    _intt!(buff, ntter.ntter)
+    ntt!(buff, ntter.ntter)
+    lazy_Bmul_to!(buff, buff, ntter.Ψinv, ntter.Q)
+    intt!(buff, ntter.ntter)
 
-    length(buff) ≠ N && _add_to!(buff[1:N-1], buff[1:N-1], buff[N+1:2N-1], Q)
+    length(buff) ≠ N && add_to!(buff[1:N-1], buff[1:N-1], buff[N+1:2N-1], Q)
 
     t = UInt64(0)
     @inbounds for i = 1:N
-        t = _add(t, a[i], Q)
+        t = add(t, a[i], Q)
     end
-    _sub_to!(buff[1:N], buff[1:N], _Bmul(t, d, Q), Q)
-    _Bmul_to!(buff[1:N], minv, buff[1:N], Q)
-    @. res = buff[1:N]
+    sub_to!(buff[1:N], buff[1:N], Bmul(t, d, Q), Q)
+    Bmul_to!(buff[1:N], minv, buff[1:N], Q)
+    copy!(res, buff[1:N])
+
+    return nothing
 end
 
-_intt!(a::AbstractVector{UInt64}, ntter::SubringNTTransformer) = _intt_to!(a, a, ntter)
+intt!(a::AbstractVector{UInt64}, ntter::SubringNTTransformer)::Nothing = intt_to!(a, a, ntter)
