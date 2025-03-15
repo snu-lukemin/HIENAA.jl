@@ -641,6 +641,7 @@ function add_to!(res::BGV, x::BGV, y::PlainPoly, oper::BGVOperator)::Nothing
     # Compute x + y.
     resize!(res.val, Qlen)
     add_to!(res.val, x.val, buff, operQ)
+    res.level[] = level
 
     return nothing
 end
@@ -674,7 +675,8 @@ function add_to!(res::BGV, x::BGV, y::PlainConst, oper::BGVOperator)::Nothing
     # Compute x + y.
     resize!(res.val, Qlen)
     add_to!(res.val, x.val, buff, operQ)
-
+    res.level[] = level
+    
     return nothing
 end
 

@@ -621,6 +621,7 @@ function add_to!(res::CKKS, x::CKKS, y::PlainPoly, oper::CKKSOperator)::Nothing
     resize!(res.val, Qlen)
     add_to!(res.val, x.val, buff, operQ)
     res.scale[] = (x.scale[] + y.scale[]) / 2
+    res.level[] = level
 
     return nothing
 end
@@ -655,7 +656,8 @@ function add_to!(res::CKKS, x::CKKS, y::PlainConst, oper::CKKSOperator)::Nothing
     resize!(res.val, Qlen)
     add_to!(res.val, x.val, buff, operQ)
     res.scale[] = (x.scale[] + y.scale[]) / 2
-
+    res.level[] = level
+    
     return nothing
 end
 

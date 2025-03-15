@@ -73,8 +73,8 @@ const round_mask::UInt64 = UInt64(1) << (fixed_prec - float_prec) - 1
 
 mult_and_round(a::UInt64, b::UInt128)::UInt128 = a * (b >> float_prec) + ((a * (b & fixed_mask)) >> float_prec)
 round_to_uint64(a::UInt128)::UInt64 = round_to_uint128(a) % UInt64
-round_to_uint128(a::UInt128)::UInt128 = (a >> (fixed_prec - float_prec) + (a & round_mask) >> (fixed_prec - float_prec - 1))
-round_to_uint128(a::Int128)::UInt128 = unsigned((a >> (fixed_prec - float_prec) + (a & round_mask) >> (fixed_prec - float_prec - 1)))
+round_to_uint128(a::UInt128)::UInt128 = (a >>> (fixed_prec - float_prec) + (a & round_mask) >>> (fixed_prec - float_prec - 1))
+round_to_uint128(a::Int128)::UInt128 = unsigned((a >>> (fixed_prec - float_prec) + (a & round_mask) >>> (fixed_prec - float_prec - 1)))
 
 """
 scramble!(a, r) computes an in-place r-radix reversal algorithm. 

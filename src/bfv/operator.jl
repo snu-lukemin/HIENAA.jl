@@ -639,6 +639,7 @@ function add_to!(res::BFV, x::BFV, y::PlainPoly, oper::BFVOperator)::Nothing
     # Compute x + buff.
     resize!(res.val, Qlen)
     add_to!(res.val, x.val, buff, operQ)
+    res.level[] = level
 
     return nothing
 end
@@ -680,6 +681,7 @@ function add_to!(res::BFV, x::BFV, y::PlainConst, oper::BFVOperator)::Nothing
     # Compute x + m.
     resize!(res.val, Qlen)
     add_to!(res.val, x.val, buff, operQ)
+    res.level[] = level
 
     return nothing
 end

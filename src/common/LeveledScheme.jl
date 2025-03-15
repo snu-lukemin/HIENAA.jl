@@ -21,7 +21,7 @@ include("bootstrap.jl")
 
 export HEScheme, HEOperator, HECiphertext, HEParamSketch, HEParameters, set_encryptor!, encrypt, encrypt_to!, decrypt, decrypt_to!, 
     set_relinkey!, rotate_keygen, set_rotate_key!, set_automorphism_key!, encode, encode_to!, decode, decode_to!, change_level, change_level_to!, drop_level_to!, 
-    rescale, rescale_to!, rotate, rotate_to!, hoisted_rotate, hoisted_rotate_to!
+    rescale, rescale_to!, rotate, rotate_to!, hoisted_rotate, hoisted_rotate_to!, get_error
 export PlainMatrix, get_bsgs_param, get_required_key_list
 export PolyCoeffs, evaluate
 export HEBootKey, HEBootstrapper, HEBootParamSketch, HEBootParameters, bootstrap_keygen, set_bootstrapper!, bootstrap

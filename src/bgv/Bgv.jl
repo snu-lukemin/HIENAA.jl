@@ -1,6 +1,6 @@
 module Bgv
 
-import ..Math: Modulus, Bred, Bmul_to!, add, add_to!, sub, sub_to!, neg, neg_to!
+import ..Math: Modulus, Bred, Bmul_to!, add, add_to!, sub, sub_to!, neg, neg_to!, gen_power_modmul
 import ..Math: BasisExtender, basis_extend_to!
 import ..Math: Interpolator, interpolate
 
@@ -20,7 +20,7 @@ import ..Rlwe: Extractor, ExtractorSubring, extract
 
 import ..LeveledScheme: HEScheme, HEOperator, HECiphertext, HEParamSketch, HEParameters, set_encryptor!, encrypt, encrypt_to!, decrypt, decrypt_to!,
     set_relinkey!, rotate_keygen, set_rotate_key!, set_automorphism_key!, encode, encode_to!, decode, decode_to!, change_level, change_level_to!, drop_level_to!,
-    rescale, rescale_to!, rotate, rotate_to!, hoisted_rotate, hoisted_rotate_to!
+    rescale, rescale_to!, rotate, rotate_to!, hoisted_rotate, hoisted_rotate_to!, get_error
 import ..LeveledScheme: PlainMatrix, get_bsgs_param, _mul_RLWE!
 import ..LeveledScheme: PolyCoeffs, degree, evaluate
 import ..LeveledScheme: HEBootstrapper, HEBootParamSketch, HEBootParameters, bootstrap

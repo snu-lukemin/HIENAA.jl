@@ -27,8 +27,8 @@ struct Modulus
         end
 
         r = floor(UInt128, (big(1) << 128) / Q)
-        r0, r1 = r % UInt64, (r >> 64) % UInt64
-        halfQ = (Q - 1) >> 1
+        r0, r1 = r % UInt64, (r >>> 64) % UInt64
+        halfQ = (Q - 1) >>> 1
         new(Q, Q⁻¹, R⁻¹, r0, r1, logQ, halfQ)
     end
 end
@@ -46,7 +46,7 @@ end
 Bred(x, Q) returns x % Q using barret reduction.
 """
 Bred(x::UInt64, Q::Modulus)::UInt64 = begin
-    t = (widemul(Q.r1, x) >> 64) % UInt64
+    t = (widemul(Q.r1, x) >>> 64) % UInt64
     res = x - Q.Q * t
     res ≥ Q.Q ? res - Q.Q : res
 end
@@ -62,8 +62,8 @@ end
 
 Bred(x::UInt128, Q::Modulus)::UInt64 = begin
     x0 = x % UInt64
-    x1 = (x >> 64) % UInt64
-    t = (widemul(Q.r1, x1) + (widemul(Q.r1, x0) + widemul(Q.r0, x1) + widemul(Q.r0, x0) >> 64) >> 64) % UInt64
+    x1 = (x >>> 64) % UInt64
+    t = (widemul(Q.r1, x1) + (widemul(Q.r1, x0) + widemul(Q.r0, x1) + widemul(Q.r0, x0) >>> 64) >>> 64) % UInt64
     res = x0 - t * Q.Q
     res ≥ Q.Q ? res - Q.Q : res
 end
@@ -78,7 +78,7 @@ Bred(x::Int128, Q::Modulus)::UInt64 = begin
 end
 
 lazy_Bred(x::UInt64, Q::Modulus)::UInt64 = begin
-    t = (widemul(Q.r1, x) >> 64) % UInt64
+    t = (widemul(Q.r1, x) >>> 64) % UInt64
     x - Q.Q * t
 end
 
@@ -93,8 +93,8 @@ end
 
 lazy_Bred(x::UInt128, Q::Modulus)::UInt64 = begin
     x0 = x % UInt64
-    x1 = (x >> 64) % UInt64
-    t = (widemul(Q.r1, x1) + (widemul(Q.r1, x0) + widemul(Q.r0, x1) + widemul(Q.r0, x0) >> 64) >> 64) % UInt64
+    x1 = (x >>> 64) % UInt64
+    t = (widemul(Q.r1, x1) + (widemul(Q.r1, x0) + widemul(Q.r0, x1) + widemul(Q.r0, x0) >>> 64) >>> 64) % UInt64
     x0 - t * Q.Q
 end
 
@@ -136,12 +136,12 @@ Base.:invmod(x::Integer, Q::Modulus)::UInt64 = begin
     n, m = UInt64(x), Q.Q
     g, x, _ = gcdx(n, m)
     g ≠ 1 && throw(DomainError((n, m), LazyString("Greatest common divisor is ", g, ".")))
-    x > typemax(UInt64) >> 1 && (x += m)
+    x > typemax(UInt64) >>> 1 && (x += m)
     Bred(x, Q)
 end
 
 Mform(x::UInt64, Q::Modulus)::UInt64 = begin
-    t = (widemul(Q.r0, x) >> 64) % UInt64 + Q.r1 * x
+    t = (widemul(Q.r0, x) >>> 64) % UInt64 + Q.r1 * x
     res = -t * Q.Q
     res ≥ Q.Q ? res - Q.Q : res
 end
@@ -329,7 +329,7 @@ Mmul(a::UInt64, b::UInt64, Q::Modulus)::UInt64 = begin
     q, q⁻¹ = Q.Q, Q.Q⁻¹
 
     ab = widemul(a, b)
-    w = ((widemul(q, (ab % UInt64) * q⁻¹) + ab) >> 64) % UInt64
+    w = ((widemul(q, (ab % UInt64) * q⁻¹) + ab) >>> 64) % UInt64
     w ≥ q ? w - q : w
 end
 
@@ -337,7 +337,7 @@ lazy_Mmul(a::UInt64, b::UInt64, Q::Modulus)::UInt64 = begin
     q, q⁻¹ = Q.Q, Q.Q⁻¹
 
     ab = widemul(a, b)
-    ((widemul(q, (ab % UInt64) * q⁻¹) + ab) >> 64) % UInt64
+    ((widemul(q, (ab % UInt64) * q⁻¹) + ab) >>> 64) % UInt64
 end
 
 Bmul(a::UInt64, b::UInt64, Q::Modulus)::UInt64 = Bred(widemul(a, b), Q)

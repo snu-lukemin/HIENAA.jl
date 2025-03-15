@@ -95,14 +95,14 @@ function basis_extend_to!(res::AbstractVector{UInt64}, a::AbstractVector{UInt64}
     return nothing
 end
 
-function basis_extend_to!(res::AbstractVector{Vector{UInt64}}, a::AbstractVector{Vector{UInt64}}, be::BasisExtender)::Nothing
+Base.@propagate_inbounds function basis_extend_to!(res::AbstractVector{Vector{UInt64}}, a::AbstractVector{Vector{UInt64}}, be::BasisExtender)::Nothing
     N, reslen, alen = length(res[1]), length(res), length(a)
 
     Q, P = be.Q, be.P
     Qlen, Plen = min(alen, length(Q)), min(reslen, length(P))
 
     if Qlen == 1
-        @inbounds for i = 1:Plen
+        for i = 1:Plen
             if be.isPinQ[i] == 1
                 copy!(res[i], a[1])
             else
@@ -126,7 +126,7 @@ function basis_extend_to!(res::AbstractVector{Vector{UInt64}}, a::AbstractVector
     else
         Qtilde, Qstar, QmodP, oneoverQ, isPinQ, v128, v64, buff = be.Qtilde, be.Qstar, be.QmodP, be.oneoverQ, be.isPinQ, be.v128, be.v64, be.buff
 
-        @inbounds for k = 0:8:N-8
+        for k = 0:8:N-8
             for i = 1:Qlen
                 buff[1, i] = Bmul(a[i][k+1], Qtilde[i], Q[i])
                 buff[2, i] = Bmul(a[i][k+2], Qtilde[i], Q[i])
@@ -179,14 +179,15 @@ function basis_extend_to!(res::AbstractVector{Vector{UInt64}}, a::AbstractVector
                     continue
                 end
 
-                res[j][k+1] = lazy_Bmul(neg(QmodP[j], P[j]), v64[1], P[j])
-                res[j][k+2] = lazy_Bmul(neg(QmodP[j], P[j]), v64[2], P[j])
-                res[j][k+3] = lazy_Bmul(neg(QmodP[j], P[j]), v64[3], P[j])
-                res[j][k+4] = lazy_Bmul(neg(QmodP[j], P[j]), v64[4], P[j])
-                res[j][k+5] = lazy_Bmul(neg(QmodP[j], P[j]), v64[5], P[j])
-                res[j][k+6] = lazy_Bmul(neg(QmodP[j], P[j]), v64[6], P[j])
-                res[j][k+7] = lazy_Bmul(neg(QmodP[j], P[j]), v64[7], P[j])
-                res[j][k+8] = lazy_Bmul(neg(QmodP[j], P[j]), v64[8], P[j])
+                negQmodP = P[j].Q - QmodP[j]
+                res[j][k+1] = lazy_Bmul(negQmodP, v64[1], P[j])
+                res[j][k+2] = lazy_Bmul(negQmodP, v64[2], P[j])
+                res[j][k+3] = lazy_Bmul(negQmodP, v64[3], P[j])
+                res[j][k+4] = lazy_Bmul(negQmodP, v64[4], P[j])
+                res[j][k+5] = lazy_Bmul(negQmodP, v64[5], P[j])
+                res[j][k+6] = lazy_Bmul(negQmodP, v64[6], P[j])
+                res[j][k+7] = lazy_Bmul(negQmodP, v64[7], P[j])
+                res[j][k+8] = lazy_Bmul(negQmodP, v64[8], P[j])
                 for i = 1:Qlen-1
                     res[j][k+1] = lazy_Bred(widemul(buff[1, i], Qstar[i, j]) + res[j][k+1], P[j])
                     res[j][k+2] = lazy_Bred(widemul(buff[2, i], Qstar[i, j]) + res[j][k+2], P[j])
@@ -208,7 +209,7 @@ function basis_extend_to!(res::AbstractVector{Vector{UInt64}}, a::AbstractVector
             end
         end
 
-        @inbounds for k = 8(N>>3)+1:N
+        for k = 8(N>>3)+1:N
             for i = 1:Qlen
                 buff[i] = Bmul(a[i][k], Qtilde[i], Q[i])
             end
@@ -226,7 +227,7 @@ function basis_extend_to!(res::AbstractVector{Vector{UInt64}}, a::AbstractVector
                     continue
                 end
 
-                res[j][k] = lazy_Bmul(neg(QmodP[j], P[j]), v64, P[j])
+                res[j][k] = lazy_Bmul(P[j].Q - QmodP[j], v64, P[j])
                 for i = 1:Qlen-1
                     res[j][k] = lazy_Bred(widemul(buff[i], Qstar[i, j]) + res[j][k], P[j])
                 end
@@ -447,7 +448,7 @@ end
     Ptilde, ω, θ = ss.Ptilde, ss.ω, ss.θ
     v128, buffP = ss.v128, ss.buffP
 
-    v128[1] = 0
+    v128[1] = zero(UInt128)
     @inbounds for i = 1:Plen
         buffP[1, i] = Bmul(a[i], Ptilde[i], P[i])
         v128[1] += mult_and_round(buffP[1, i], θ[i])
@@ -481,14 +482,14 @@ end
     v128, buffP = ss.v128, ss.buffP
 
     @inbounds for k = 0:8:N-8
-        v128[1] = 0
-        v128[2] = 0
-        v128[3] = 0
-        v128[4] = 0
-        v128[5] = 0
-        v128[6] = 0
-        v128[7] = 0
-        v128[8] = 0
+        v128[1] = zero(UInt128)
+        v128[2] = zero(UInt128)
+        v128[3] = zero(UInt128)
+        v128[4] = zero(UInt128)
+        v128[5] = zero(UInt128)
+        v128[6] = zero(UInt128)
+        v128[7] = zero(UInt128)
+        v128[8] = zero(UInt128)
 
         for i = 1:Plen
             buffP[1, i] = Bmul(a[i][k+1], Ptilde[i], P[i])
@@ -548,7 +549,7 @@ end
     end
 
     @inbounds for k = 8(N>>3)+1:N
-        v128[1] = 0
+        v128[1] = zero(UInt128)
         for i = 1:Plen
             buffP[1, i] = Bmul(a[i][k], Ptilde[i], P[i])
             v128[1] += mult_and_round(buffP[1, i], θ[i])
@@ -644,14 +645,14 @@ end
     v128, v64, buffP = cs.v128, cs.v64, cs.buffP
 
     @inbounds for k = 0:8:N-8
-        v128[1] = 0
-        v128[2] = 0
-        v128[3] = 0
-        v128[4] = 0
-        v128[5] = 0
-        v128[6] = 0
-        v128[7] = 0
-        v128[8] = 0
+        v128[1] = zero(UInt128)
+        v128[2] = zero(UInt128)
+        v128[3] = zero(UInt128)
+        v128[4] = zero(UInt128)
+        v128[5] = zero(UInt128)
+        v128[6] = zero(UInt128)
+        v128[7] = zero(UInt128)
+        v128[8] = zero(UInt128)
 
         for i = 1:Plen
             buffP[1, i] = Bmul(a[i][k+1], Ptilde[i], P[i])
@@ -701,14 +702,14 @@ end
             end
         end
 
-        v128[1] = 0
-        v128[2] = 0
-        v128[3] = 0
-        v128[4] = 0
-        v128[5] = 0
-        v128[6] = 0
-        v128[7] = 0
-        v128[8] = 0
+        v128[1] = zero(UInt128)
+        v128[2] = zero(UInt128)
+        v128[3] = zero(UInt128)
+        v128[4] = zero(UInt128)
+        v128[5] = zero(UInt128)
+        v128[6] = zero(UInt128)
+        v128[7] = zero(UInt128)
+        v128[8] = zero(UInt128)
         for i = 1:Plen
             v128[1] += mult_and_round(buffP[1, i], θ[i])
             v128[2] += mult_and_round(buffP[2, i], θ[i])
@@ -750,7 +751,7 @@ end
     end
 
     @inbounds for k = 8(N>>3)+1:N
-        v128[1] = 0
+        v128[1] = zero(UInt128)
         for i = 1:Plen
             buffP[1, i] = Bmul(a[i][k], Ptilde[i], P[i])
             v128[1] += mult_and_round(buffP[1, i], oneoverP[i])
@@ -764,7 +765,7 @@ end
             end
         end
 
-        v128[1] = 0
+        v128[1] = zero(UInt128)
         for i = 1:Plen
             v128[1] += mult_and_round(buffP[1, i], θ[i])
         end

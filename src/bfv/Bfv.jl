@@ -1,11 +1,11 @@
 module Bfv
 
-import ..Math: Modulus, Bred, Bmul, Bmul_to!, add, add_to!, sub, sub_to!, neg, neg_to!
+import ..Math: Modulus, Bred, Bmul, Bmul_to!, add, add_to!, sub, sub_to!, neg, neg_to!, gen_power_modmul
 import ..Math: BasisExtender, basis_extend_to!, SimpleScaler, simple_scale_to!, ComplexScaler, complex_scale_to!
 import ..Math: Interpolator, interpolate
 
 import ..Ring: RingParam, find_prime
-import ..Ring: PolyEvaluatorRNS, ModPoly, Bred_to!, mul, mul_to!, muladd_to!, ntt, ntt!, ntt_to!, intt, intt!, intt_to!,
+import ..Ring: PolyEvaluatorRNS, ModPoly, Bred_to!, mul, mul_to!, muladd_to!, mulsub_to!, ntt, ntt!, ntt_to!, intt, intt!, intt_to!,
     automorphism, automorphism_to!, automorphism!, to_big
 import ..Ring: IntPacker, IntPackerArb, IntPackerNTT, IntPackerPow2, IntPackerSubring, pack_to!, unpack_to!, load_resolution
 import ..Ring: RefBool, RefInt
@@ -20,7 +20,7 @@ import ..Rlwe: Extractor, ExtractorSubring, extract
 
 import ..LeveledScheme: HEScheme, HEOperator, HECiphertext, HEParamSketch, HEParameters, set_encryptor!, encrypt, encrypt_to!, decrypt, decrypt_to!,
     set_relinkey!, rotate_keygen, set_rotate_key!, set_automorphism_key!, encode, encode_to!, decode, decode_to!, change_level, change_level_to!, drop_level_to!,
-    rescale, rescale_to!, rotate, rotate_to!, hoisted_rotate, hoisted_rotate_to!
+    rescale, rescale_to!, rotate, rotate_to!, hoisted_rotate, hoisted_rotate_to!, get_error
 import ..LeveledScheme: PlainMatrix, get_bsgs_param, _mul_RLWE!
 import ..LeveledScheme: PolyCoeffs, degree, evaluate
 import ..LeveledScheme: HEBootstrapper, HEBootParamSketch, HEBootParameters, bootstrap
