@@ -850,7 +850,7 @@ mul_to!(res::ModPoly, x::ModPoly, y::ModPoly, eval::PolyEvaluatorRNS)::Nothing =
     if !(length(res) == length(x) == length(y))
         throw(DimensionMismatch("The length of input and output polynomials should be the same."))
     end
-    if x.isntt[] ≠ y.isntt[]
+    if !(x.isntt[] == y.isntt[] == true)
         throw(DomainError("Input polynomials should be both in NTT form."))
     end
     if length(x) ≠ length(eval)
@@ -896,7 +896,7 @@ muladd_to!(res::ModPoly, x::ModPoly, y::ModPoly, eval::PolyEvaluatorRNS)::Nothin
     if !(length(res) == length(x) == length(y))
         throw(DimensionMismatch("The length of input and output polynomials should be the same."))
     end
-    if x.isntt[] ≠ y.isntt[]
+    if !(x.isntt[] == y.isntt[] == true)
         throw(DomainError("Input polynomials should be both in NTT form."))
     end
     if length(x) ≠ length(eval)
@@ -960,7 +960,7 @@ mulsub_to!(res::ModPoly, x::ModPoly, y::ModPoly, eval::PolyEvaluatorRNS)::Nothin
     if !(length(res) == length(x) == length(y))
         throw(DimensionMismatch("The length of input and output polynomials should be the same."))
     end
-    if x.isntt[] ≠ y.isntt[]
+    if !(x.isntt[] == y.isntt[] == true)
         throw(DomainError("Input polynomials should be both in NTT form."))
     end
     if length(x) ≠ length(eval)
