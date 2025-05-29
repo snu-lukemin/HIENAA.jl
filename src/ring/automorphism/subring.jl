@@ -1,14 +1,17 @@
 function _automorphism!(idx::Int64, a::AbstractVector{UInt64}, isntt::Bool, ntter::SubringNTTransformer)::Nothing
-    m, d, N, g, gpowN = ntter.m, ntter.d, ntter.N, ntter.g, ntter.gpowN
+    m, gpowN, ginvpowN = ntter.m, ntter.gpowN, ntter.ginvpowN
 
     idx = mod(idx, m)
 
-    if idx ∉ gpowN
+    if idx ∈ gpowN
+        shift = findfirst(isequal(idx), gpowN) - 1
+    elseif idx ∈ ginvpowN
+        shift = -(findfirst(isequal(idx), ginvpowN) - 1)
+    else
         throw(DomainError("$(idx) is not a valid automorphism index."))
     end
 
-    shift = findfirst(isequal(idx), gpowN) - 1
-    circshift!(a, isntt ? shift : -shift)
+    circshift!(a, isntt ? -shift : shift)
 
     return nothing
 end

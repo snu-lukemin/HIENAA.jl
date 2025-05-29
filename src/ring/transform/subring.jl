@@ -13,6 +13,7 @@ struct SubringNTTransformer <: NTTransformer
     Ψinv::Vector{UInt64}
     buff::Vector{UInt64}
     gpowN::Vector{Int32}
+    ginvpowN::Vector{Int32}
     ntter::CyclicNTTransformer2a3b5c7d
 
     function SubringNTTransformer(m::Int64, d::Int64, Q::Modulus)::SubringNTTransformer
@@ -53,11 +54,12 @@ struct SubringNTTransformer <: NTTransformer
         ntt!(Ψinv, ntter)
 
         buff = Vector{UInt64}(undef, convlen)
-        
-        cubegen = invmod(g, m)
-        gpowN = Int32[powermod(cubegen, i, m) for i = 0:N-1]
 
-        new(Q, m, d, N, g, invmod(m, Q), Ψ, Ψinv, buff, gpowN, ntter)
+        ginv = invmod(g, m)
+        gpowN = Int32[powermod(g, i, m) for i = 0:N-1]
+        ginvpowN = Int32[powermod(ginv, i, m) for i = 0:N-1]
+
+        new(Q, m, d, N, g, invmod(m, Q), Ψ, Ψinv, buff, gpowN, ginvpowN, ntter)
     end
 end
 
