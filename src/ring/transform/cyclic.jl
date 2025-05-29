@@ -945,7 +945,7 @@ struct CyclicNTTransformerBluestein <: CyclicNTTransformer
     chirpinv::Vector{UInt64}
 
     function CyclicNTTransformerBluestein(m::Int64, Q::Modulus)::CyclicNTTransformerBluestein
-        N = next2a3b5c7d(2m - 1)
+        N = next2a3b(2m - 1)
         N2, N3, N5, N7 = factor2357(N)
 
         if Q.Q % 2m ≠ 1

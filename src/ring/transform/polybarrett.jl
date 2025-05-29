@@ -19,10 +19,10 @@ struct ReductorArbNTT <: ReductorArb
     @views function ReductorArbNTT(deg::Int64, poly::Vector{Int64}, Q::Modulus)::ReductorArbNTT
         N = length(poly) - 1
 
-        ñ = next2a3b5c7d(N)
+        ñ = next2a3b(N)
 
         α = deg - N
-        A = next2a3b5c7d(2α + 1)
+        A = next2a3b(2α + 1)
 
         ntterñ = CyclicNTTransformer2a3b5c7d(ñ, Q)
         ntterA = CyclicNTTransformer2a3b5c7d(A, Q)
@@ -75,10 +75,10 @@ struct ReductorCycloNTT <: ReductorCyclo
         if deg == N
             new(p, moverp, true, m, deg, N, Q, 0, 0, 0, missing, missing, UInt64[], UInt64[], UInt64[], UInt64[])
         else
-            ñ = next2a3b5c7d(N)
+            ñ = next2a3b(N)
 
             α = deg - N
-            A = next2a3b5c7d(2α + 1)
+            A = next2a3b(2α + 1)
 
             ntterñ = CyclicNTTransformer2a3b5c7d(ñ, Q)
             ntterA = CyclicNTTransformer2a3b5c7d(A, Q)
@@ -179,9 +179,9 @@ struct ReductorArbWord <: ReductorArb
     @views function ReductorArbWord(deg::Int64, poly::Vector{Int64}, Q::Modulus)
         N = length(poly) - 1
 
-        ñ = next2a3b5c7d(N)
+        ñ = next2a3b(N)
         α = deg - N
-        A = next2a3b5c7d(2α + 1)
+        A = next2a3b(2α + 1)
 
         Plen = ceil(Int64, (2log2(Q.Q) + log2(max(ñ, A))) / 62)
         P = Modulus.(collect(Ring.find_prime_reductor(deg, N, 62, Plen)))
@@ -252,9 +252,9 @@ struct ReductorCycloWord <: ReductorCyclo
         if deg == N
             new(p, moverp, true, m, deg, N, Q, 0, Modulus[], 0, 0, 0, missing, CyclicNTTransformer2a3b5c7d[], CyclicNTTransformer2a3b5c7d[], Vector{UInt64}[], Vector{UInt64}[], Vector{UInt64}[], Vector{UInt64}[], Vector{UInt64}[])
         else
-            ñ = next2a3b5c7d(N)
+            ñ = next2a3b(N)
             α = deg - N
-            A = next2a3b5c7d(2α + 1)
+            A = next2a3b(2α + 1)
 
             Plen = ceil(Int64, (2log2(Q.Q) + log2(max(ñ, A))) / 62)
             P = Modulus.(collect(Ring.find_prime_reductor(deg, N, 62, 3)))

@@ -639,7 +639,7 @@ struct IntPackerSubring <: IntPacker
         cubegen = [invmod(primitive_root_finder(m), m)]
 
         Plen = ceil(Int64, (log2(k) + 2r * log2(p)) / 62)
-        convlen = is2a3b5c7d(k) ? k : next2a3b5c7d(2k - 1)
+        convlen = is2a3b5c7d(k) ? k : next2a3b(2k - 1)
 
         P = Modulus.(find_prime_cyclic(convlen, 62, Plen))
         ntterP = CyclicNTTransformer[CyclicNTTransformer(convlen, Pi) for Pi = P]

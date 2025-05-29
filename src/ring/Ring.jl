@@ -3,7 +3,7 @@ module Ring
 import ..Math: Modulus, Moduli, Bred, Bred!, Bred_to!, Bmul, lazy_Bmul, Bmul_to!, lazy_Bmul_to!, Bmuladd_to!, Bmulsub_to!,
     Mform!, iMform!, lazy_Mmul, add, add_to!, sub, sub_to!, neg, neg_to!
 import ..Math: BasisExtender, basis_extend_to!
-import ..Math: ord, zeropadto, is2a3b5c7d, next2a3b5c7d, factor2357, scramble!, primitive_root_finder,
+import ..Math: ord, zeropadto, is2a3b5c7d, next2a3b, factor2357, scramble!, primitive_root_finder,
     ith_root_from_primitive_root, find_generators_mod_m, division, division_mod_Q, cyclotomic_finder
 import ..Math: UniformSampler, uniform_random_to!
 

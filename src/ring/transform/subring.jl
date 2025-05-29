@@ -30,7 +30,7 @@ struct SubringNTTransformer <: NTTransformer
         g = primitive_root_finder(m)
         N = (m - 1) ÷ d
 
-        convlen = is2a3b5c7d(N) ? N : next2a3b5c7d(2N - 1)
+        convlen = is2a3b5c7d(N) ? N : next2a3b(2N - 1)
         ntter = CyclicNTTransformer2a3b5c7d(convlen, Q)
 
         ξ = primitive_root_finder(Q)

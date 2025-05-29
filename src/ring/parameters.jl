@@ -59,7 +59,7 @@ function find_prime(param::RingParam, b::Real, n::Int64=1; onemod::Int64=1)::Vec
 end
 
 function check_modulus_cyclic(m::Int64, Q::UInt64; onemod::Int64)::Bool
-    step = is2a3b5c7d(m) ? m : lcm(next2a3b5c7d(2m - 1), m)
+    step = is2a3b5c7d(m) ? m : lcm(next2a3b(2m - 1), m)
     # Q % fact == 1
     Qi = collect(keys(factor(Dict, Q)))
     all(Qi .% step .== 1)
@@ -99,7 +99,7 @@ function find_prime_cyclic(m::Int64, b::Real, n::Int64=1; onemod::Int64=1)::Vect
             end
         end
     else
-        step = lcm(next2a3b5c7d(2m - 1), m, onemod)
+        step = lcm(next2a3b(2m - 1), m, onemod)
         initialn = floor(UInt64, 2.0^b / step) * step + 1
         currentn = nextprime(initialn, interval=step)
         initialn == currentn && (initialn -= step)
@@ -128,7 +128,7 @@ function check_modulus_cyclotomic(m::Int64, Q::UInt64; onemod::Int64=1)::Bool
     if ispow2(m)
         step = lcm(m, onemod)
     else
-        bluestein = next2a3b5c7d(2m - 1)
+        bluestein = next2a3b(2m - 1)
 
         N = totient(m)
         factors = factor(Vector, m)
@@ -138,8 +138,8 @@ function check_modulus_cyclotomic(m::Int64, Q::UInt64; onemod::Int64=1)::Bool
         if deg == N
             step = lcm(bluestein, m, onemod)
         else
-            ñ = next2a3b5c7d(N)
-            A = next2a3b5c7d(2(deg - N) + 1)
+            ñ = next2a3b(N)
+            A = next2a3b(2(deg - N) + 1)
             step = lcm(bluestein, m, ñ, A, onemod)
         end
     end
@@ -182,7 +182,7 @@ function find_prime_cyclotomic(m::Int64, b::Real, n::Int64=1; onemod::Int64=1)::
             end
         end
     else
-        bluestein = next2a3b5c7d(2m - 1)
+        bluestein = next2a3b(2m - 1)
 
         N = totient(m)
         factors = factor(Vector, m)
@@ -192,8 +192,8 @@ function find_prime_cyclotomic(m::Int64, b::Real, n::Int64=1; onemod::Int64=1)::
         if deg == N
             step = lcm(bluestein, m, onemod)
         else
-            ñ = next2a3b5c7d(N)
-            A = next2a3b5c7d(2(deg - N) + 1)
+            ñ = next2a3b(N)
+            A = next2a3b(2(deg - N) + 1)
             step = lcm(bluestein, m, ñ, A, onemod)
         end
 
@@ -222,8 +222,8 @@ function find_prime_cyclotomic(m::Int64, b::Real, n::Int64=1; onemod::Int64=1)::
 end
 
 function check_modulus_reductor(deg::Int64, N::Int64, Q::UInt64; onemod::Int64=1)::Bool
-    ñ = next2a3b5c7d(N)
-    A = next2a3b5c7d(2(deg - N) + 1)
+    ñ = next2a3b(N)
+    A = next2a3b(2(deg - N) + 1)
     step = lcm(ñ, A, onemod)
 
     Qi = collect(keys(factor(Dict, Q)))
@@ -242,8 +242,8 @@ function find_prime_reductor(deg::Int64, N::Int64, b::Real, n::Int64=1; onemod::
 
     primes = Vector{UInt64}(undef, n)
 
-    ñ = next2a3b5c7d(N)
-    A = next2a3b5c7d(2(deg - N) + 1)
+    ñ = next2a3b(N)
+    A = next2a3b(2(deg - N) + 1)
     step = lcm(ñ, A, onemod)
 
     initialn = floor(UInt64, 2.0^b / step) * step + 1
@@ -271,7 +271,7 @@ end
 
 function check_modulussubring(m::Int64, d::Int64, Q::UInt64; onemod::Int64=1)::Bool
     N = (m - 1) ÷ d
-    step = is2a3b5c7d(N) ? lcm(N * m, onemod) : lcm(next2a3b5c7d(2N - 1), m, onemod)
+    step = is2a3b5c7d(N) ? lcm(N * m, onemod) : lcm(next2a3b(2N - 1), m, onemod)
     Qi = collect(keys(factor(Dict, Q)))
     all(Qi .% step .== 1)
 end
@@ -316,7 +316,7 @@ function find_primesubring(m::Int64, d::Int64, b::Real, n::Int64=1; onemod::Int6
             end
         end
     else
-        step = lcm(next2a3b5c7d(2N - 1), m, onemod)
+        step = lcm(next2a3b(2N - 1), m, onemod)
         initialn = floor(UInt64, 2.0^b / step) * step + 1
         currentn = nextprime(initialn, interval=step)
         initialn == currentn && (initialn -= step)

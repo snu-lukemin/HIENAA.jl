@@ -30,9 +30,11 @@ end
 
 @noinline is2a3b5c7d(n::Int64)::Bool = keys(factor(Dict, n)) ⊆ [2, 3, 5, 7]
 
-@noinline next2a3b5c7d(n::Int64)::Int64 = begin
+@noinline is2a3b(n::Int64)::Bool = keys(factor(Dict, n)) ⊆ [2, 3]
+
+@noinline next2a3b(n::Int64)::Int64 = begin
     res = n + 1
-    while !is2a3b5c7d(res)
+    while !is2a3b(res)
         res += 1
     end
     res
