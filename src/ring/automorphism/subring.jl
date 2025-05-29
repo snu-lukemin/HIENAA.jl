@@ -3,14 +3,12 @@ function _automorphism!(idx::Int64, a::AbstractVector{UInt64}, isntt::Bool, ntte
 
     idx = mod(idx, m)
 
-    gᴺ = powermod(g, N, m)
-    for i = 0:d-1
-        tmp = (idx * powermod(gᴺ, i, m)) % m
-        if tmp ∈ gpowN
-            shift = findfirst(isequal(tmp), gpowN) - 1
-            circshift!(a, isntt ? -shift : shift)
-        end
+    if idx ∉ gpowN
+        throw(DomainError("$(idx) is not a valid automorphism index."))
     end
+
+    shift = findfirst(isequal(idx), gpowN) - 1
+    circshift!(a, isntt ? shift : -shift)
 
     return nothing
 end

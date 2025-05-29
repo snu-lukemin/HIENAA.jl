@@ -53,7 +53,9 @@ struct SubringNTTransformer <: NTTransformer
         ntt!(Ψinv, ntter)
 
         buff = Vector{UInt64}(undef, convlen)
-        gpowN = Int32[powermod(g, i, m) for i = 0:N-1]
+        
+        cubegen = invmod(g, m)
+        gpowN = Int32[powermod(cubegen, i, m) for i = 0:N-1]
 
         new(Q, m, d, N, g, invmod(m, Q), Ψ, Ψinv, buff, gpowN, ntter)
     end
