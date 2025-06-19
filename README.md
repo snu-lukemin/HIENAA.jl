@@ -139,9 +139,9 @@ HIENAA is licensed under the Apache 2.0 License.
 ## Citing
 To cite HIENAA, please use the following BibTeX entry:
 ```tex
-@misc{HIENAA.jl,
+@misc{HIENAA,
   title={{HIENAA.jl}},
-  author={Intak Hwang, Seonhong Min},
+  author={Hwang, Intak and Min, Seonhong},
   year={2025},
   howpublished = {Online: \url{https://github.com/snu-lukemin/HIENAA.jl}},
 }
